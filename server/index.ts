@@ -224,6 +224,19 @@ function setupErrorHandler(app: express.Application) {
     throw err;
   });
 }
+app.get("/api/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
+import cors from "cors";
+
+const origins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: origins.length ? origins : true,
+  credentials: false
+}));
 
 (async () => {
   // Log database configuration at startup (show host only, no credentials)
@@ -244,15 +257,9 @@ function setupErrorHandler(app: express.Application) {
 
   setupErrorHandler(app);
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`express server serving on port ${port}`);
-    },
-  );
-})();
+const PORT = Number(process.env.PORT || 5000);
+const HOST = "0.0.0.0";
+  app.listen(PORT, HOST, () => {
+  console.log(`API listening on http://${HOST}:${PORT}`);
+})
+})
