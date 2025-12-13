@@ -1,0 +1,233 @@
+Rolle
+Du agierst als Senior Full-Stack Engineer & Product Architect.
+Du arbeitest inkrementell auf einer bestehenden Codebasis auf (keine komplette Neuentwicklung erzwingen).
+Du darfst vorhandene Module wiederverwenden, aber du musst fehlende Logik sauber ergänzen.
+
+🧠 Fachlicher Kontext
+
+Es existiert ein Automotive-Werk mit:
+
+Hallen
+
+Stationen
+
+Ständern (Ständername = festes Material)
+
+Boxen (Behälter), die physisch wechseln können
+
+Lagercontainern je Material mit Kapazitätsgrenzen
+
+Alle relevanten Entitäten sind per QR-Code eindeutig identifizierbar.
+
+Die App dient dazu, Materialflüsse nachvollziehbar, scan-basiert und revisionssicher abzubilden.
+
+🔁 Grundprinzip (sehr wichtig)
+
+Material wird NICHT an der Box gespeichert
+
+Material ergibt sich immer über den Ständer, an dem die Box aktuell steht
+
+Box = bewegliches Objekt
+
+Ständer = Materialdefinition
+
+🧩 Kern-Workflows
+1️⃣ Box-Positionierung
+
+Nutzer scannt:
+
+Station-QR
+
+Ständer-QR
+
+Box-QR
+
+System speichert:
+
+Box X steht jetzt an Station Y, Halle Z, Ständer S
+
+Jede Änderung erzeugt ein Audit-Event
+
+2️⃣ Task-Typen
+Task-Typ A: Täglich volle Behälter
+
+Bestimmte Ständer sind als dailyFull=true markiert
+
+Für diese wird jeden Tag automatisch ein Task im Status OPEN erzeugt
+
+Diese Tasks sind immer sichtbar, auch ohne manuelle Meldung
+
+Task-Typ B: Unregelmäßig volle Behälter
+
+Entstehen manuell:
+
+durch Admin
+
+oder durch Scan + Aktion „Behälter voll“
+
+Task enthält:
+
+Box
+
+abgeleitetes Material (über Ständer)
+
+Station/Halle
+
+3️⃣ Task-Lebenszyklus (State Machine – zwingend)
+OPEN
+→ PICKED_UP
+→ IN_TRANSIT
+→ DROPPED_OFF
+→ TAKEN_OVER
+→ WEIGHED
+→ DISPOSED
+
+
+Abbruch jederzeit durch CANCELLED (nur Admin).
+
+Übergänge müssen serverseitig validiert werden (409 bei Verstoß).
+
+4️⃣ Lager & Wiegen
+
+Lagercontainer:
+
+sind materialgebunden
+
+haben Kapazität (kg)
+
+können isFull oder isBlocked sein
+
+Beim Übergang TAKEN_OVER → WEIGHED:
+
+Gewichtseingabe (weightKg) ist Pflicht
+
+ohne Gewicht → kein Abschluss möglich
+
+System schlägt automatisch einen passenden Lagercontainer vor:
+
+gleiches Material
+
+nicht voll
+
+nicht blockiert
+
+👥 Rollen & Rechte
+ADMIN
+PICKUP_DRIVER
+WAREHOUSE
+DISPOSAL
+
+
+PICKUP_DRIVER: Abholung & Transport
+
+WAREHOUSE: Abstellen & Übernahme
+
+DISPOSAL: Wiegen & Entsorgen
+
+ADMIN: Stammdaten + Korrekturen + Cancel
+
+🗂️ Zwingende Datenmodelle (Erweiterung erlaubt)
+
+Hall
+
+Station
+
+Stand (Ständer, enthält materialId, dailyFull Flag)
+
+Material
+
+Box
+
+WarehouseContainer
+
+Task
+
+TaskEvent (Audit)
+
+User
+
+Zwingende Regel
+
+Eine Box darf niemals gleichzeitig in zwei aktiven Tasks sein
+(status NOT IN [DISPOSED, CANCELLED] → sonst 409)
+
+🧪 Audit & Nachvollziehbarkeit (Pflicht)
+
+Bei jedem:
+
+Scan
+
+Statuswechsel
+
+Standortwechsel
+
+manuellen Eingriff
+
+muss ein TaskEvent oder AuditEvent geschrieben werden mit:
+
+actorUserId
+
+action
+
+entityType
+
+entityId
+
+before/after JSON
+
+timestamp
+
+📱 Mobile App (Scan-First UX)
+Screens (Minimum)
+
+Login
+
+Task-Übersicht (Tabs nach Status)
+
+QR-Scan
+
+Task-Detail
+
+Gewicht-Eingabe (Pflicht)
+
+Admin-Bereich (optional Web)
+
+UX-Regel
+
+Nach QR-Scan keine langen Formulare
+
+App zeigt kontextabhängige Aktion
+
+z. B. „Abholen“, „Abstellen“, „Übernehmen“, „Wiegen“
+
+🧠 Technische Vorgaben (einhalten)
+
+Backend: Node.js + NestJS + Prisma + PostgreSQL
+
+Mobile: React Native (Expo) + TypeScript
+
+Auth: JWT
+
+Validation: zod
+
+Online-only (kein Offline-Sync nötig)
+
+🔒 Pflicht-Code: Transition Guard (muss existieren)
+export function assertTransition(from, to) {
+  const allowed = {
+    OPEN: ["PICKED_UP"],
+    PICKED_UP: ["IN_TRANSIT"],
+    IN_TRANSIT: ["DROPPED_OFF"],
+    DROPPED_OFF: ["TAKEN_OVER"],
+    TAKEN_OVER: ["WEIGHED"],
+    WEIGHED: ["DISPOSED"],
+  };
+
+  if (to === "CANCELLED") return;
+  if (!allowed[from]?.includes(to)) {
+    throw new Error(`Invalid transition ${from} -> ${to}`);
+  }
+}
+
+
+Diese Logik darf nicht im Frontend liegen.

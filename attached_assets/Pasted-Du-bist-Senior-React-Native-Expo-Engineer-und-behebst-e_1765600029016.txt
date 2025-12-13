@@ -1,0 +1,144 @@
+Du bist Senior React Native/Expo Engineer und behebst einen UI-/Data-Bug im Screen „QR-Center“. Aktuell: In den Tabs Halle und Station erscheinen nur leere Karten mit „?“ Icon, während Stellplatz korrekt QR-Previews zeigt. Ziel ist: Alle Tabs zeigen konsistente, korrekte Inhalte (Label + QR-Status/Preview), ohne Layout-Verschiebungen, ohne Overflows.
+
+1) Problemdefinition (zwingend)
+
+Tab „Halle“ und „Station“ rendert List Items ohne Inhalte (nur Placeholder „?“), obwohl Daten existieren.
+
+Tab „Stellplatz“ rendert QR-Preview korrekt.
+
+Vermutung: falsches Mapping/Render-Branch je Entity-Type, falsche Property-Namen (qr_code vs qrCode), state wird bei Tabwechsel nicht resettet oder Query/Endpoint liefert andere Felder.
+
+2) Anforderungen (Soll-Zustand)
+
+Für jeden Entity-Type (Halle/Station/Stellplatz/Box/Lagercontainer) muss jedes List Item enthalten:
+
+Titel/Label (z. B. K13 – Halle, K13-S01 – Station, ST-… – Stellplatz, Box-002, Kupfer Container 1)
+
+QR-Status:
+
+Wenn qr_code vorhanden: QR-Preview rechts (klein) + Chevron
+
+Wenn qr_code fehlt: „QR fehlt“ Badge + Button „Generieren“ (für alle Rollen möglich, Regenerate nur Admin)
+
+Keine leeren Cards ohne Text.
+
+3) Systematische Diagnose (muss umgesetzt werden)
+
+Implementiere kurzzeitig Debug Logging (nur dev):
+
+Logge beim Tabwechsel:
+
+selectedType
+
+response count
+
+erstes Item shape (keys)
+
+Prüfe, ob die API je Type unterschiedliche Felder liefert (z. B. displayName, name, code, identifier, serial, qr_code).
+
+Fixe die Mapper-Schicht: ein einheitliches ViewModel für die UI.
+
+4) Architektur-Fix (zwingend): Einheitliches ViewModel
+
+Erstelle eine zentrale Funktion:
+
+mapQrEntityToRow(entityType, rawEntity) -> { id, title, subtitle?, qrValue, hasQr, rightPreviewMode }
+
+Regeln:
+
+qrValue muss immer auf das DB-Feld qr_code gemappt werden (oder serverseitig konsistent gemacht).
+
+title:
+
+Hall: ${code} – ${name}
+
+Station: ${code} – ${name}
+
+Stand: ${identifier} (${materialName})
+
+Box: ${serial}
+
+Warehouse: ${material_type} – ${location}
+
+Wenn wichtige Felder fehlen → fallback auf sichere Defaults, aber niemals „leeres Item“.
+
+5) Data Fetch Fix (häufige Ursache)
+Tabwechsel muss state korrekt resetten:
+
+Beim Wechsel des Tabs:
+
+setze query="" optional beibehalten
+
+setze items=[] sofort (damit keine alten Items „durchbluten“)
+
+setze loading=true
+
+lade neu (debounced)
+
+Stelle sicher:
+
+type wird korrekt an Endpoint übergeben (HALL|STATION|STAND|BOX|WAREHOUSE_CONTAINER)
+
+Response wird nicht gecached unter falschem Query-Key (React Query / SWR / custom cache)
+
+keyExtractor = item.id (nicht Index)
+
+6) UI-Rendering Fix (zwingend)
+
+Entferne bedingte Render-Branches, die für Hall/Station „qr preview“ deaktivieren.
+
+Rendere rechts:
+
+wenn hasQr: QR-Preview (z. B. 56x56) mit react-native-qrcode-svg
+
+sonst: kleines „QR fehlt“ Icon + „Generieren“ Button
+
+Links immer Text:
+
+Title (1 Zeile, ellipsize)
+
+Subtitle optional (1 Zeile)
+
+Layout-Regeln (verhindert deinen Screenshot-Bug)
+
+Row Container: flexDirection:'row', alignItems:'center'
+
+Left Text Container: flex:1, minWidth:0, paddingRight:12
+
+Text: numberOfLines={1}, ellipsizeMode="tail"
+
+QR Preview Container: fester Frame (width:64, height:64, alignItems:'center', justifyContent:'center')
+
+Card: keine variable Höhe durch fehlenden Content; Mindesthöhe definieren (z. B. 84)
+
+7) SafeArea / Spacing / Scroll
+
+Screen Root nutzt SafeAreaView (safe-area-context)
+
+FlatList mit contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+
+Suche-Input darf nicht über List Items „drüber“ rutschen
+
+Keine Überlappung mit TabBar (dein Screenshot zeigt potenziell knappen Bottom Space)
+
+8) Akzeptanzkriterien (prüfbar)
+
+In „Halle“ werden Hallen als Liste mit Text angezeigt (keine leeren Cards).
+
+In „Station“ werden Stationen als Liste mit Text angezeigt (keine leeren Cards).
+
+In allen Tabs wird QR korrekt als Preview angezeigt, wenn qr_code vorhanden.
+
+Wenn qr_code fehlt, wird „QR fehlt“ angezeigt und „Generieren“ funktioniert.
+
+Beim Tabwechsel keine „alten“ Daten / keine falschen QR-Previews.
+
+Keine Overflows/Überlappungen; UI ist auf kleinen Geräten stabil.
+
+9) Output
+
+Vollständige Code-Änderungen im QR-Center Screen
+
+(Falls nötig) Anpassung des API Response Contracts, sodass alle Types id, displayName/title, qr_code konsistent liefern
+
+Entferne Debug Logging nach Fix oder hinter dev flag.

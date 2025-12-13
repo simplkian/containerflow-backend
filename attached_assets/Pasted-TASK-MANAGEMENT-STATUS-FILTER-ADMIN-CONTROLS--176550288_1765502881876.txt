@@ -1,0 +1,177 @@
+TASK MANAGEMENT – STATUS, FILTER & ADMIN CONTROLS
+=================================================
+
+CONTEXT
+=======
+
+We need to standardize and fix the task management logic across backend and frontend.
+
+This affects:
+- Task creation
+- Default task status
+- Task filtering in the Admin UI
+- Admin permissions (status change + delete task)
+
+Business clarity and consistency are the goal.
+
+
+-------------------------------------------------
+PART 1 — DEFAULT TASK STATUS = OFFEN
+-------------------------------------------------
+
+Requirement:
+
+- EVERY task that is newly created MUST start with status:
+  OFFEN
+
+Important clarifications:
+
+- OFFEN is the initial, neutral state.
+- OFFEN means:
+  - Task exists
+  - Not yet started
+  - Not yet accepted
+  - Not yet in progress
+
+Implementation details:
+
+1) Backend:
+   - On task creation (POST /api/tasks):
+     - Force status = OFFEN
+     - Do NOT rely on frontend values for initial status
+     - Ignore any incoming status field from the client
+   - Set createdAt timestamp correctly.
+
+2) Database:
+   - Ensure OFFEN is a valid enum/state in TaskStatus.
+   - Ensure no task starts as ACCEPTED, IN_PROGRESS, or similar.
+
+3) Frontend:
+   - After creation, UI must show the task with status OFFEN.
+   - Status badge and labels must reflect OFFEN correctly.
+
+
+-------------------------------------------------
+PART 2 — ADMIN TASK FILTERING MUST WORK EVERYWHERE
+-------------------------------------------------
+
+Requirement:
+
+In the Admin area, tasks must always be filterable correctly.
+
+1) Default Admin View:
+   - When an admin opens ANY task list:
+     - Show ALL tasks with status = OFFEN by default.
+   - This applies to:
+     - Admin task overview
+     - Dashboard task widgets
+     - Any “Tasks” page in admin context
+
+2) Filters:
+   - Filters by status MUST work correctly:
+     - OFFEN
+     - ACCEPTED
+     - IN_PROGRESS / PICKED_UP
+     - COMPLETED
+     - CANCELLED
+   - Changing a filter must:
+     - Actually refetch or refilter data
+     - Not just visually change the UI
+
+3) Backend:
+   - Ensure task list endpoints support status filtering:
+     - e.g. ?status=OFFEN
+   - For ADMIN:
+     - Do NOT filter by assigned_to_user_id
+     - Return tasks from ALL drivers
+   - For DRIVER:
+     - Keep filtering to own tasks only
+
+4) Frontend:
+   - Ensure filter state is respected everywhere:
+     - Admin task list
+     - Admin dashboard task counts
+   - Ensure no stale data after filter changes.
+
+
+-------------------------------------------------
+PART 3 — ADMIN MUST BE ABLE TO DELETE TASKS
+-------------------------------------------------
+
+VERY IMPORTANT REQUIREMENT:
+
+The ADMIN must be able to DELETE tasks — not only change their status.
+
+1) Backend:
+   - Implement DELETE /api/tasks/:id
+   - Permissions:
+     - ONLY ADMIN may delete tasks
+     - DRIVER must NOT be allowed
+   - Behavior:
+     - If task exists → delete it
+     - If task does not exist → return 404
+   - Return:
+     ```json
+     {
+       "message": "Task successfully deleted"
+     }
+     ```
+
+2) Side effects:
+   - When deleting a task:
+     - Remove or cascade related data cleanly:
+       - scanEvents (if related)
+       - activityLogs (or keep them, but mark taskId as null if needed)
+   - Do NOT leave orphaned records that break queries.
+
+3) Activity log:
+   - Create an activity log entry when a task is deleted:
+     - Type: TASK_DELETED
+     - Message: "Task <id> was deleted by admin <user>"
+
+4) Frontend (Admin UI):
+   - Add a “Task löschen” / “Delete Task” action:
+     - Only visible for ADMIN
+   - UX requirements:
+     - Confirmation dialog:
+       "Möchtest du diese Aufgabe wirklich löschen?"
+     - Buttons:
+       - Abbrechen
+       - Ja, löschen
+   - After successful deletion:
+     - Show success message
+     - Remove task from all task lists immediately
+     - Update dashboard counters
+
+5) Restrictions:
+   - Admin may delete tasks in ANY state:
+     - OFFEN
+     - ACCEPTED
+     - IN_PROGRESS
+     - COMPLETED (optional but allowed)
+   - If deleting completed tasks is risky, show a stronger confirmation — but deletion must still be possible.
+
+
+-------------------------------------------------
+PART 4 — CONSISTENCY & VALIDATION
+-------------------------------------------------
+
+Ensure consistency across the app:
+
+- OFFEN is the single source of truth for “new task”
+- Filters must never show wrong data
+- Deleted tasks must disappear everywhere
+- Drivers must NEVER see delete options
+- Admin must have full control
+
+Do NOT change:
+- Authentication logic
+- QR code logic
+- Container logic
+- Supabase configuration
+
+ONLY modify:
+- Task creation default status
+- Task filtering logic
+- Admin delete functionality
+- Admin UI controls related to tasks

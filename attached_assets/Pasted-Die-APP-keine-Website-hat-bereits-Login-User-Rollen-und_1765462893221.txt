@@ -1,0 +1,146 @@
+Die APP (keine Website) hat bereits Login, User, Rollen und grundlegende Funktionen für Container/Tasks/Scans.
+
+AKTUELLES PROBLEM:
+- Egal ob man sich als Admin oder Driver einloggt, in der UI wird immer „Driver“ angezeigt.
+- Der Admin-Bereich ist entweder gar nicht sichtbar oder nicht korrekt erreichbar.
+- Die Rollen-Logik (ADMIN vs DRIVER) ist nicht sauber im Frontend und Backend umgesetzt.
+
+Bitte fokussiere dich jetzt auf:
+1. SAUBERE ROLLEN-LOGIK (ADMIN vs DRIVER)
+2. KORREKTE UI-FLOWS UND NAVIGATION FÜR BEIDE ROLLEN
+3. SICHTBARKEIT / SCHUTZ DES ADMIN-BEREICHS
+
+1. Rollen-Logik korrigieren (Backend + Frontend)
+
+- Es gibt mindestens zwei Rollen:
+  - ADMIN
+  - DRIVER
+
+- Backend:
+  - Stelle sicher, dass der eingeloggte User vom Backend mit einem Feld `role` zurückgegeben wird, z. B.:
+    ```json
+    {
+      "id": "u1",
+      "name": "Max Mustermann",
+      "role": "ADMIN"
+    }
+    ```
+  - Die Rolle darf NICHT hardcodiert werden (also nicht immer DRIVER setzen).
+  - Falls es ein Login-/Auth-Endpoint gibt (z. B. `/api/login` oder `/api/auth/me`), stelle sicher:
+    - Die Response enthält immer die korrekte Rolle aus der Datenbank/User-Tabelle.
+    - Es wird nicht im Code etwas überschrieben wie `role = "DRIVER"`.
+
+- Frontend:
+  - Beim Login bzw. beim Laden des aktuellen Users soll die Rolle des Users in einem State/Store gespeichert werden (z. B. `currentUser.role`).
+  - Die Rolle soll NICHT künstlich auf DRIVER gesetzt werden.
+  - Entferne/überarbeite alle Stellen, an denen offensichtlich `role: "DRIVER"` fest vergeben wird, obwohl es der echte Benutzer-Rolle widerspricht.
+
+2. UI-Flows & Navigation für ADMIN
+
+- Ziel: Wenn ein User mit Rolle ADMIN eingeloggt ist, soll er einen klar erkennbaren Admin-Bereich haben.
+- Admin-Funktionen sind u. a.:
+  - Container-Verwaltung (Liste, Detail, Anlegen, Reset auf Null, etc.).
+  - Task-/Auftragsverwaltung (Erstellen, Zuweisen an Fahrer).
+  - Aktivitäten-/Historie-Tab (Timestamps, Scan-Events, Statuswechsel).
+- Implementiere im Frontend:
+  - Eine Navigation / Sidebar / Tab-Bar, die je nach Rolle unterschiedliche Punkte zeigt.
+
+  Beispiel:
+  - Für ADMIN:
+    - Dashboard
+    - Container
+    - Tasks/Aufträge
+    - Aktivitäten / Historie
+    - Einstellungen (optional)
+  - Für DRIVER:
+    - Meine Aufgaben (Tasks)
+    - Container scannen (Info-Scan)
+    - Profil / Einstellungen (optional)
+
+- Es soll einen klaren „Admin-Bereich“ geben, der NUR sichtbar ist, wenn `currentUser.role === "ADMIN"`:
+  - z. B. einen Admin-Tab „Admin“ oder „Verwaltung“.
+  - Routen wie `/admin/*` sollen nur für ADMIN zugänglich sein.
+
+3. UI-Flows & Navigation für DRIVER
+
+- Für DRIVER soll die UI fokussiert und einfach sein:
+  - Startscreen mit Liste der zugewiesenen Tasks.
+  - In den Task-Details:
+    - Infos zum Kunden, Container, geplante Zeit.
+    - Button „Container scannen“ (öffnet QR-Scanner mit `scanContext = TASK_ACCEPT_AT_CUSTOMER` oder ähnlichem).
+  - Ein separater Bereich „Container scannen (Info)“ kann optional existieren, um im Lager Container zu scannen:
+    - `scanContext = WAREHOUSE_INFO`
+    - Zeigt nur Info-Popup wie: Inhalt, Menge, Standort im Lager.
+
+- WICHTIG:
+  - Ein DRIVER soll KEINEN Zugriff auf Admin-Funktionen haben:
+    - Keine Buttons zum „Reset auf Null“.
+    - Keine Container-Verwaltung.
+    - Kein globaler Aktivitäten-/Historien-Tab für alle Fahrer/Admins.
+  - Bitte die UI so umbauen, dass ein Driver diese Elemente weder sieht noch aufrufen kann (keine Buttons, keine Routen im Menü).
+
+4. Route-Guards / Zugriffsschutz
+
+- Implementiere eine einfache Rollenprüfung auf Routenebene (Frontend), z. B.:
+  - Admin-Routen wie `/admin`, `/admin/containers`, `/admin/tasks`, `/admin/activities`:
+    - nur rendern, wenn `currentUser.role === "ADMIN"`.
+    - Andernfalls: Redirect auf eine erlaubte Seite (z. B. Driver-Dashboard).
+- Zusätzlich im Backend:
+  - Für Admin-APIs (z. B. Container-Reset, Task-Erstellung, Aktivitätenlisten):
+    - Prüfen, dass der aktualle User die Rolle ADMIN hat.
+    - Falls nicht: `403 Forbidden`.
+
+5. Anzeige der Rolle im UI
+
+- Behebe den konkreten Fehler, dass immer „Driver“ angezeigt wird:
+  - Es soll z. B. im Header/Profilbereich korrekt stehen:
+    - „Rolle: Admin“ wenn `role === "ADMIN"`.
+    - „Rolle: Fahrer“ wenn `role === "DRIVER"`.
+- Prüfe alle Komponenten, in denen die Rolle angezeigt oder für UI-Entscheidungen verwendet wird:
+  - Ersetze alle hartkodierten Strings/Logik mit einer sauberen Abfrage des User-Objekts.
+
+6. Beispielhafte UI-Flows (bitte so oder ähnlich umsetzen)
+
+A) Admin-Flow:
+- Admin loggt sich ein.
+- Sieht Admin-Dashboard mit Überblick: offene Tasks, letzte Aktivitäten.
+- Navigation:
+  - „Container“:
+    - Liste aller Container, Buttons: Details, Bearbeiten, ggf. Reset auf Null (mit Bestätigung & Animation).
+  - „Tasks“:
+    - Liste aller Aufträge, Buttons: Neuer Auftrag, Details, Bearbeiten, Zuweisen.
+  - „Aktivitäten“:
+    - Historienansicht mit allen ActivityLog-Einträgen (Filter nach Task, Fahrer, Zeitraum).
+
+B) Driver-Flow:
+- Fahrer loggt sich ein.
+- Sieht eine Liste „Meine Aufgaben“:
+  - Jede Aufgabe mit Titel, geplante Zeit, Kunde, Status.
+- Klickt auf einen Task:
+  - Sieht Details:
+    - Kunde/Adresse
+    - Container-Info (Label, geplante Menge)
+    - Hinweis, zu welchem Lagerplatz/Container er zurückbringen soll.
+    - Button „Container scannen“:
+      - öffnet Scanner (Kontext: `TASK_ACCEPT_AT_CUSTOMER` oder `TASK_COMPLETE_AT_WAREHOUSE` je nach Phase).
+- Kein Zugang zu:
+  - Container-Liste/Verwaltung.
+  - Admin-Einstellungen.
+  - Globaler Aktivitäten-Übersicht.
+
+7. Testing / Kontrolle
+
+- Baue ein paar Dummy User in den Seeds/Fixtures ein:
+  - Admin: `admin@example.com`, role: "ADMIN"
+  - Fahrer: `driver@example.com`, role: "DRIVER"
+- Teste/implementiere:
+  - Login als Admin:
+    - Admin-Bereich ist sichtbar.
+    - Rolle wird korrekt angezeigt („Admin“).
+  - Login als Driver:
+    - Nur Fahrer-spezifische Views sind erreichbar.
+    - Rolle wird korrekt angezeigt („Fahrer“).
+- Entferne alle Hardcodings, die immer „DRIVER“ setzen.
+
+WICHTIG:
+- PRIORITÄT hat die Lösung des Problems, dass immer „Driver“ angezeigt wird und der Admin

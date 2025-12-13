@@ -1,0 +1,177 @@
+Empfehlung zur Struktur (damit es nicht chaotisch wird)
+Admin-Navigation
+
+Zeitpläne (für wiederkehrende Tasks)
+
+Aufgaben (für manuelle Einmal-Tasks + Übersicht/Filtern)
+
+Wiederkehrend: zwei Optionen
+
+Option A (empfohlen): Wiederkehrende Tasks über task_schedules verwalten
+
+Vorteil: flexibel (daily/weekly/interval, Uhrzeit pro Schedule, Vorschau der nächsten Tage)
+
+Du kannst später neue „immer voll“-Behälter ohne SQL anlegen
+
+Option B: Wiederkehrende Tasks ausschließlich über stands.daily_full + daily_task_time_local
+
+Vorteil: weniger UI
+
+Nachteil: weniger flexibel, keine Wochenlogik ohne zusätzliche Felder
+
+Du musst dich nicht hart festlegen: Du kannst Option A aktiv nutzen, aber zusätzlich stands.daily_full als „Shortcut“ anbieten (Schedule aus daily_full automatisch erzeugen). Das ist oft die beste Lösung.
+
+Was genau im UI passieren soll
+1) Zeitpläne-Tab (bleibt)
+
+bestehende Funktion bleibt: Zeitpläne erstellen/ändern (Uhrzeit, Wiederholung, Stand/Station)
+
+zusätzlich: Button „Vorschau nächste 7/14/30 Tage“
+
+2) Neuer Admin-Flow „Aufgabe hinzufügen“ (manuell)
+
+Button: „Neue Aufgabe“
+Wizard/Modal mit Dropdowns:
+
+Halle auswählen (Dropdown)
+
+Station auswählen (Dropdown, gefiltert nach Halle)
+
+Ständer auswählen (Dropdown, gefiltert nach Station; zeigt identifier + Materialname)
+
+Optional: Box auswählen/scan (optional, wenn du es nutzen willst)
+
+Optional: geplant für Datum/Uhrzeit (wenn du Einmal-Task terminieren willst; sonst sofort OPEN)
+
+Beim Bestätigen:
+
+Backend erstellt Task:
+
+source='MANUAL'
+
+scheduled_for optional (oder null)
+
+stand_id, station_id
+
+material wird aus stand.material_id übernommen
+
+status='OPEN'
+
+AuditEvent schreiben: TASK_CREATED + meta (hall, station, stand, material)
+
+Wichtig: Das ist exakt deine Anforderung „nicht hinschreiben müssen“.
+
+Prompt für Replit (direkt kopieren)
+
+PROMPT START
+
+Du bist Lead Engineer. Implementiere im Admin-Bereich zusätzlich zum bestehenden Zeitpläne-Tab eine Funktion „Manuelle Aufgabe hinzufügen“ als eigenen Bereich „Aufgaben“ oder als Button innerhalb Admin. Ziel: Admin kann Einmal-Tasks erstellen, indem er Halle → Station → Stand/Material aus Dropdowns auswählt (keine freie Texteingabe). Nutze bestehende Tabellen halls, stations, stands, materials, tasks, task_events.
+
+Anforderungen (zwingend)
+
+Admin-UI
+
+Behalte den Admin-Tab „Zeitpläne“ (task_schedules) wie er ist.
+
+Füge einen Admin-Tab „Aufgaben“ hinzu ODER einen Button „Neue Aufgabe“ zusätzlich zu Zeitplänen (beide ok).
+
+Implementiere einen Modal/Wizard:
+
+Schritt 1: Dropdown Halle (GET /admin/halls)
+
+Schritt 2: Dropdown Station gefiltert nach Halle (GET /admin/halls/:id/stations)
+
+Schritt 3: Dropdown Ständer gefiltert nach Station (GET /admin/stations/:id/stands) – Anzeige: stand.identifier + material.name
+
+Optional: scheduled_for Datum/Uhrzeit (Einmalplanung), sonst leer
+
+Submit: erstellt Task
+
+Backend APIs (NestJS)
+Implementiere Admin-Endpoints:
+
+GET /admin/halls -> list halls (id, code, name)
+
+GET /admin/halls/:hallId/stations -> list stations in hall (id, code, name)
+
+GET /admin/stations/:stationId/stands -> list stands in station inkl. material (id, identifier, material_id, material.name)
+
+POST /admin/tasks -> erstellt Task manuell
+
+POST /admin/tasks payload:
+{
+"hallId": "...",
+"stationId": "...",
+"standId": "...",
+"scheduledFor": "YYYY-MM-DDTHH:mm:ss" | null
+}
+
+Server-Regeln:
+
+Prüfe, dass station.hall_id = hallId (sonst 400)
+
+Lade Stand inkl. material_id (Pflicht)
+
+Erzeuge Task:
+
+status = 'OPEN'
+
+source = 'MANUAL'
+
+task_type = 'AUTOMOTIVE' (oder setze task_type entsprechend neuem System)
+
+stand_id = standId
+
+box_id = null (optional)
+
+scheduled_for = scheduledFor oder null
+
+dedup_key = null
+
+schedule_id = null
+
+Lege zusätzlich in task_events einen Event an:
+
+action='TASK_CREATED'
+
+timestamp=now()
+
+actor_user_id = aktueller Admin-User
+
+meta_json enthält hallId, stationId, standId, materialId, source='MANUAL'
+
+Datenbank bleibt kompatibel
+
+Nutze bestehende Spalten in tasks:
+
+stand_id, box_id, scheduled_for, source, task_type, status
+
+Nutze bestehende task_events als Audit (kein neues Event-System nötig).
+
+UX
+
+Dropdowns müssen abhängig laden (Halle → Station → Stand).
+
+Ständer-Auswahl zeigt Materialname klar an.
+
+Nach Erstellung soll die neue Task sofort in der globalen Taskliste erscheinen (jeder sieht alles).
+
+Option: Wiederkehrende Tasks über DB vs Zeitpläne
+
+Zeitpläne bleiben aktiv (task_schedules).
+
+Optional: wenn stands.daily_full=true, dann Admin kann per Button „Daily Schedule erzeugen“ einen task_schedule erstellen:
+
+rule_type='DAILY', time_local=stands.daily_task_time_local oder '06:00', stand_id, station_id
+
+Nur wenn noch kein Schedule für diesen Stand existiert.
+
+Lieferumfang:
+
+Vollständiger Code (Controller/Service/Prisma/SQL falls nötig)
+
+UI Screens/Components
+
+Kurzes README_AdminTasks.md, wie man manuelle Tasks erstellt
+
+PROMPT END

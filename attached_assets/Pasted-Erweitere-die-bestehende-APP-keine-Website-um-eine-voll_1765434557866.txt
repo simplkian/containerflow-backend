@@ -1,0 +1,93 @@
+Erweitere die bestehende APP (keine Website) um eine vollständige QR-Code- und Scan-Logik für Container. Bitte halte dich an folgende Anforderungen:
+
+1. Grundlogik Container & QR-Codes
+- Jeder Container (egal ob er bei uns im Lager oder beim Kunden steht) hat einen eindeutigen QR-Code.
+- Dieser QR-Code ist eindeutig einem Container-Datensatz im System zugeordnet (z. B. via containerId).
+- Der QR-Code wird von uns an den Container angebracht, damit man ihn scannen kann.
+- WICHTIG: Die Bestands- / Inhaltsdaten („wie viel drin ist“) sind für unser Lager relevant. Die Anzeige soll sich immer auf unsere Lagerdaten beziehen, nicht auf irgendeinen externen Fremdbestand.
+
+2. Scan im Lager (allgemeine Info-Anzeige)
+- Wenn ein Mitarbeiter im Lager einen Container-QR-Code scannt (z. B. über eine allgemeine „Container scannen“-Funktion in der App):
+  - Es soll ein kleines Overlay-/Popup-Fenster geöffnet werden, das übersichtlich die Containerdaten anzeigt:
+    - Container-ID / Bezeichnung
+    - Was ist drin? (Materialbeschreibung / Art des Inhalts)
+    - Menge (z. B. in kg oder Tonnen)
+    - Optional: Standort im Lager, Status etc.
+  - Diese Funktion dient zur schnellen Info-Anzeige. Es ist KEINE Aufgabenannahme, sondern nur ein Info-Popup.
+  - Design: gut lesbar, klar strukturiert, in beiden Modi (Hell/Dunkel) gut erkennbar.
+
+3. Aufgaben-/Auftragslogik (Admin erstellt, Fahrer führt aus)
+- Rollen:
+  - Admin: erstellt Aufgaben/Aufträge.
+  - Fahrer: führt Aufgaben aus.
+- Admin-Funktion:
+  - Der Admin kann einen Auftrag erstellen, z. B.:
+    - „Morgen um [Datum/Uhrzeit] muss Container XYZ bei Kunde ABC abgeholt werden.“
+    - Angaben wie:
+      - Container (Bezug zu einem konkreten Container/Containergruppe)
+      - Ziel-/Abholort (z. B. Kunde)
+      - ggf. geplante Menge (kg/Tonnen, Beschreibung)
+  - Der Admin weist diesen Auftrag einem Fahrer zu.
+- Im Fahrer-Interface:
+  - Der Fahrer sieht eine Liste seiner offenen Aufgaben.
+  - In den Aufgabendetails soll ein klarer Button vorhanden sein: „Container scannen“.
+  - Beim Klick auf „Container scannen“:
+    - Öffnet sich der QR-Code-Scanner.
+    - Sobald der Fahrer den QR-Code des entsprechenden Containers scannt:
+      - Soll der Scan nicht nur im Backend registriert werden, sondern die UI soll aktiv reagieren:
+        - Kurz „laden“ (z. B. Loading-State).
+        - Danach eine Bestätigung anzeigen, etwa:
+          - „Auftrag angenommen“
+          - „Container XYZ“
+          - „Inhalt: …“
+          - „Menge: … (kg / t)“
+      - Der Auftrag soll im Backend als „angenommen“ markiert werden.
+      - Es soll dabei direkt ein Timestamp (Zeitstempel) gespeichert werden: Zeitpunkt, wann der Fahrer den Auftrag angenommen hat (bzw. den Container beim Kunden gescannt hat).
+
+4. Scan beim Kunden & Hinweis auf Zielcontainer im Lager
+- Szenario: Der Fahrer ist beim Kunden und scannt dort den Container.
+- Wenn der Scan im Rahmen einer konkreten Aufgabe erfolgt:
+  - Nach dem Scan wird angezeigt:
+    - Infos zum Container wie oben (ID, Inhalt, Menge).
+    - Zusätzlich ein klarer Hinweis, zu welchem Container/Standort im Lager der Fahrer diesen Container bringen soll.
+      - Beispiel: „Ziel im Lager: Containerplatz A-17“ oder „Zuordnen zu Container-ID 12345 im Lager“.
+  - Diese Zuordnung (Zielcontainer / Lagerplatz) soll in den Aufgabendaten hinterlegt sein, damit sie beim Scan angezeigt werden kann.
+
+5. Scan bei Ankunft im Lager – Abschluss des Auftrags
+- Wenn der Fahrer mit dem Container zurück im Lager ist:
+  - Er scannt dort erneut den entsprechenden Container (oder den Ziel-Container im Lager, je nach Design).
+  - Nach dem Scan im Lager:
+    - Dem Container im System wird das Gewicht/Menge zugeteilt (z. B. aus den Auftragsdaten oder einer Eingabe).
+    - Der Auftrag wird im Backend als „abgeschlossen“ markiert.
+    - Es wird ein weiterer Timestamp gespeichert:
+      - Zeitpunkt der Ankunft / Ablieferung im Lager.
+    - UI-Feedback:
+      - Kurze Ladeanimation.
+      - Danach eine Erfolgsmeldung wie:
+        - „Container XYZ wurde im Lager übernommen.“
+        - „Auftrag abgeschlossen.“
+      - Diese Meldung soll wieder klar lesbar und visuell eindeutig sein.
+
+6. Aktivitäten- / Historien-Tab (für Admin)
+- Im Admin-Interface soll es einen Tab / Bereich „Aktivitäten“ oder „Historie“ geben.
+- Dort soll der Admin die wichtigsten Zeitpunkte sehen, z. B.:
+  - Auftrag erstellt (mit Zeitstempel).
+  - Auftrag angenommen (Zeitpunkt, an dem der Fahrer beim Kunden gescannt hat).
+  - Auftrag abgeschlossen / Container im Lager gescannt (Zeitpunkt).
+- Die Einträge sollen pro Auftrag / Fahrer / Container nachvollziehbar sein:
+  - z. B. „[Datum/Uhrzeit] – Fahrer Müller – Auftrag 123 – Container XYZ – beim Kunden gescannt (Auftrag angenommen).“
+  - z. B. „[Datum/Uhrzeit] – Fahrer Müller – Auftrag 123 – Container XYZ – im Lager gescannt (Auftrag abgeschlossen).“
+
+7. Technische Hinweise
+- Implementiere die QR-Code-Scan-Funktion so, dass sie sowohl im allgemeinen Lager-Kontext (Info-Popup) als auch im Aufgaben-Kontext (Auftragsannahme/Abschluss) genutzt werden kann:
+  - z. B. Unterscheidung anhand des Screens, von dem aus der Scanner gestartet wurde.
+- Stelle sicher, dass nach jedem relevanten Scan:
+  - Die Daten im Backend aktualisiert werden (Status, Timestamps, ggf. Gewicht).
+  - Die UI unmittelbar visuelles Feedback gibt (Loading-State, Erfolgsmeldung).
+- Achte auf klare Fehlerbehandlung:
+  - Wenn der falsche Container gescannt wird (nicht zum Auftrag passend), soll eine deutliche Fehlermeldung kommen:
+    - z. B. „Dieser Container gehört nicht zu diesem Auftrag.“
+- Achte weiterhin auf gutes, barrierearmes Design:
+  - Hohe Lesbarkeit, saubere Buttons, gleiche Designrichtlinien wie zuvor (Light/Dark Mode, Kontraste etc.).
+
+Bitte alle Punkte vollständig umsetzen und die neuen Funktionen sauber in die bestehende Rollen- und UI-Struktur (Admin/Fahrer, Lager/Customer-Szenario) integrieren.

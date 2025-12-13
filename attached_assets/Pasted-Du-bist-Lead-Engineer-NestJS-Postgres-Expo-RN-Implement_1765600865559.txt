@@ -1,0 +1,165 @@
+Du bist Lead Engineer (NestJS + Postgres + Expo RN). Implementiere ein robustes QR-System für die Entitäten Station, Stand (Stellplatz), Box. Hallen haben keinen QR-Code und erscheinen nicht im QR-Center. Fixe außerdem den aktuellen Bug, dass im QR-Center keine QR-Codes mehr angezeigt werden, obwohl sie in der DB existieren (z. B. bei Boxen).
+
+1) Scope / Regeln
+Entitäten mit QR (Pflicht)
+
+Station (stations)
+
+Stand/Stellplatz (stands)
+
+Box (boxes)
+
+Entitäten ohne QR
+
+Hallen (halls) werden im QR-Center NICHT angeboten und brauchen kein qr_code Feld.
+
+QR-Philosophie
+
+QR ist stabil: einmal generiert, bleibt er
+
+„Neu generieren“ nur Admin, nur Notfall, mit Confirm Dialog
+
+Wenn QR fehlt: jeder darf „Generieren“ (ensure) ausführenC) stands.qr_code und boxes.qr_code existieren bereits
+
+Stelle sicher, dass UI/Backend überall das Feld qr_code nutzt (snake_case).
+
+3) Backend: Einheitlicher QR-Contract (der Bugfix)
+Wichtig: QR-Center darf nicht je Entity unterschiedliche Feldnamen erwarten.
+
+Jeder QR-Center Endpoint muss immer liefern:
+
+id
+
+title (string)
+
+subtitle (string | null)
+
+qr_code (string | null) // exakt dieser Name!
+
+has_qr (boolean)
+
+Implementiere ein DTO/ViewModel, das für jede Entität exakt so zurückkommt.
+
+4) Backend API (zwingend)
+A) Liste für QR-Center
+
+GET /admin/qr-center/entities?type=STATION|STAND|BOX&query=...
+
+returns: { items: QrEntityRow[] }
+
+QrEntityRow:
+
+id: string
+
+title: string
+
+subtitle?: string
+
+qr_code: string | null
+
+has_qr: boolean
+
+B) Ensure (QR erzeugen, falls fehlt) – Rollenoffen
+
+POST /admin/qr-center/ensure
+body: { type: "STATION"|"STAND"|"BOX", id: string }
+returns: { qr_code: string }
+
+Serverlogik:
+
+wenn qr_code leer → setze:
+
+STATION: {"t":"STATION","id":"<id>"}
+
+STAND: {"t":"STAND","id":"<id>"}
+
+BOX: {"t":"BOX","id":"<id>"}
+
+wenn vorhanden → no-op, gebe vorhandenen zurück
+
+C) Regenerate – Admin-only + Confirm-Flow
+
+POST /admin/qr-center/regenerate
+body: { type, id, confirm: true }
+returns: { qr_code: string }
+
+Regenerate-Format (UNIQUE sicher):
+
+{"t":"BOX","id":"<id>","v":"<shortRand>"}
+
+Audit:
+
+activity_logs: type='QR', action='QR_ENSURE'|'QR_REGENERATE'
+
+metadata: {entityType, entityId, oldQr, newQr}
+
+5) UI: QR-Center neu/sauber implementieren (Admin-Menü beim Karteneditor)
+Platzierung
+
+Admin → Karteneditor → neues Menü: „QR-Center“
+
+Tabs (zwingend)
+
+Station
+
+Stellplatz (Stand)
+
+Box
+(Keine Halle)
+
+List Items
+
+Jede Zeile zeigt:
+
+Title + Subtitle
+
+rechts:
+
+wenn has_qr: QR-Preview (klein) + Chevron
+
+wenn !has_qr: Badge „QR fehlt“ + Button „Generieren“
+
+Detail Screen
+
+Beim Klick:
+
+großer QR
+
+Buttons:
+
+„Teilen/Download“
+
+„Drucken“ (optional)
+
+Admin-only: „Neu generieren“ (Confirm Dialog: „Alter QR wird ungültig“)
+
+Bugfix in UI
+
+Stelle sicher, dass die UI das Feld exakt qr_code liest, nicht qrCode o. ä.
+
+Tabwechsel muss State resetten (items leeren + refetch)
+
+keyExtractor = item.id
+
+6) Datenquelle: Automotive-Fabrik Boxen
+
+Da Boxen dort QR bereits anzeigen, muss QR-Center denselben Source-of-Truth nutzen:
+
+boxes.qr_code aus DB
+Keine separaten Caches oder andere Tabellen.
+
+7) Abnahmekriterien
+
+QR-Center zeigt Station/Stand/Box Listen mit QR-Previews, wenn DB qr_code vorhanden ist.
+
+Falls Stationen keinen QR hatten, werden sie durch Migration + ensure befüllt.
+
+„Halle“ ist im QR-Center nicht vorhanden.
+
+Ensure funktioniert für alle Rollen.
+
+Regenerate nur Admin + Confirm + Audit.
+
+QR-Codes sind stabil und korrekt parsebar.
+
+Output: vollständiger Code für Migration, Backend Endpoints, UI Screens, und Fix für die falschen Feldnamen/Mapper.

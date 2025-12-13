@@ -1,0 +1,175 @@
+Du bist Senior UI Engineer & React Native/Expo Lead. Deine Aufgabe ist ein rein visueller/UX Refactor über die gesamte App. Keine Business-Logik ändern, keine DB-Änderungen. Fokus: Layout-Korrektheit, Stabilität, Responsiveness und Konsistenz. Kein Pseudocode, vollständige Code-Änderungen.
+
+1) Ziele (zwingend)
+
+Keine verschobenen Header/Elemente (SafeArea korrekt)
+
+Keine überlangen Textfelder („Standort lädt die ganze Welt“) → sauberer Wrap/Clamp/Truncate
+
+Keine Überlappungen (Map, Marker, Badges, Drawers, Listen)
+
+Keine abgeschnittenen Bereiche (Scroll/Keyboard/SafeArea)
+
+Einheitliche Typografie, Spacing, Cards, Buttons
+
+Korrektes Verhalten auf:
+
+kleinen Phones (z. B. iPhone SE/Android small)
+
+großen Phones
+
+Tablets (so gut wie möglich)
+
+Dark/Light Mode muss konsistent sein (falls vorhanden)
+
+2) Kritischer Bug (Beispiel) – Task Details
+
+Im Task-Detail-Screen:
+
+Das Feld „Standort“ darf nicht unendlich breit/hoch rendern.
+
+Implementiere:
+
+maxLines / numberOfLines + ellipsizeMode
+
+oder eine collapsible “Mehr anzeigen”-Funktion
+
+Layout darf nicht nach oben verschoben sein:
+
+SafeAreaView korrekt
+
+Header nicht über Content
+
+contentInset + paddingTop prüfen
+
+3) Layout-Standards (zwingend einführen)
+
+Erstelle ein zentrales Design-System:
+
+Spacing: 4/8/12/16/24
+
+Typography: title / subtitle / body / caption
+
+Card Component (einheitlich)
+
+Screen Wrapper:
+
+SafeArea integriert
+
+Standard padding
+
+optional Scrollable
+
+SectionHeader standardisiert
+
+Alle Screens müssen auf diese Bausteine umgestellt werden.
+
+4) Responsiveness & Safe Area
+
+Jede Screen-Root nutzt SafeAreaView (react-native-safe-area-context).
+
+Verwende useSafeAreaInsets() für Top/Bottom Padding.
+
+Keine “magic numbers” für Header offsets.
+
+Verwende ScrollView oder FlatList korrekt:
+
+contentContainerStyle mit paddingBottom (insets.bottom + Abstand)
+
+Keyboard Handling:
+
+Form-Screens nutzen KeyboardAvoidingView (iOS) + korrektes Verhalten Android.
+
+5) Text Overflows (systematisch)
+
+Finde und fixe alle Stellen, wo:
+
+Text aus dem Container läuft
+
+Labels zu lang sind (Standort, Materialbeschreibung, Station etc.)
+Fixe mit:
+
+flexShrink: 1
+
+minWidth: 0 (wichtig bei row layouts)
+
+numberOfLines
+
+ellipsizeMode="tail"
+
+Text Wrapping statt fixed width
+
+6) Map UI / Drawer UI
+
+Marker/Badges dürfen nicht überlappen:
+
+setze minimum touch target (44px)
+
+Badge position relativ zum Marker, nicht absolut zum Screen
+
+Drawer/BottomSheet:
+
+darf Map nicht permanent verdecken
+
+Snap Points: 25% / 55% / 85%
+
+Inhalte scrollen innerhalb, kein overflow
+
+7) Navigation/Header Konsistenz
+
+Einheitliche Header-Styles
+
+Back Button + Title ausgerichtet
+
+Keine doppelten Header (Stack Header + eigener Header)
+
+Prüfe alle Screens auf:
+
+doppelte SafeArea/Padding
+
+falsches zIndex/position: absolute
+
+8) QA-Checkliste (zwingend abarbeiten)
+
+Gehe Screen für Screen durch und prüfe:
+
+Login/Profile
+
+QR-Center
+
+Map (Overview/Hall/Station/Stand)
+
+Tasks List
+
+Task Detail
+
+Admin: Layout-Verwaltung, Zeitpläne, Stammdaten
+
+Scanner Screens
+Für jeden Screen:
+
+keine Überläufe
+
+kein abgeschnittener Content
+
+Buttons erreichbar
+
+Listen scrollen sauber
+
+Loading/Empty States sind ordentlich ausgerichtet
+
+9) Output
+
+Refactor PR mit:
+
+neuen UI-Basis-Komponenten (Screen/Card/Typography/Spacing)
+
+Anpassungen aller Screens
+
+Fix für Task-Detail „Standort“-Problem
+
+Optional: kleine “UI Debug” Toggle (nur dev), der Layout Bounds anzeigen kann
+
+Dokumentation: README_UI_GUIDE.md (Spacing, Typography, Regeln)
+
+Wichtig: Liefere Code, nicht nur Vorschläge. Keine Änderungen an Datenmodellen oder Business Rules.

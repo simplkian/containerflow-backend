@@ -1,0 +1,191 @@
+Dies ist eine APP (keine Website) für Container-Logistik mit QR-Codes, Admin- und Fahrer-Rollen. Bitte konzentriere dich jetzt vor allem auf ein SAUBERES DATENMODELL (Tabellen/Collections) und eine klare STATUS- und TIMESTAMP-Logik für Container, Aufträge und Scans.
+
+Du sollst:
+- ein konsistentes Datenmodell definieren (je nach Tech-Stack z. B. SQL + ORM/Prisma oder NoSQL-Schema),
+- eindeutige Relationen und Statuswerte definieren,
+- die bisher beschriebenen Use-Cases (QR-Code-Scans, Aufgaben/Aufträge, Aktivitäten-Timeline) sauber abbilden.
+
+1. Basis-Entitäten (Vorschlag, du darfst das technisch passend umsetzen)
+
+Definiere mindestens folgende Entitäten/Tabellen/Collections:
+
+a) User
+- id
+- name
+- role (ENUM: "ADMIN", "DRIVER")
+- optional: email, phone
+- createdAt, updatedAt
+
+b) Container
+- id (interne eindeutige ID)
+- qrCodeValue (String, eindeutig, wird auf dem QR-Code kodiert)
+- label / name (z. B. „Container XYZ“)
+- contentDescription (Text, was drin ist)
+- quantity (Menge numerisch, z. B. in kg oder Tonnen)
+- quantityUnit (z. B. "kg", "t")
+- status (ENUM, z. B.: "AT_WAREHOUSE", "AT_CUSTOMER", "IN_TRANSIT", "OUT_OF_SERVICE")
+- warehouseLocation (optional: String, z. B. Regalfach, Platz im Lager)
+- customerLocation (optional: Bezug zu Kunde/Adresse, wenn beim Kunden)
+- createdAt, updatedAt
+
+c) Customer (optional, aber wünschenswert)
+- id
+- name
+- address
+- contactInfo
+- createdAt, updatedAt
+
+d) Task / Job (Auftrag)
+- id
+- title (kurze Beschreibung)
+- description (Detailbeschreibung)
+- containerId (Referenz auf Container, der bewegt werden soll)
+- customerId (optional: Referenz auf Kunden, bei dem der Container abgeholt/abgeliefert wird)
+- createdByUserId (Admin)
+- assignedToUserId (Fahrer)
+- plannedExecutionTime (Datum/Uhrzeit, wann der Auftrag geplant ist)
+- plannedQuantity (z. B. Menge, die erwartet wird)
+- plannedQuantityUnit
+- status (ENUM, siehe Statusmodell unten)
+- createdAt, updatedAt
+
+e) ScanEvent (wichtig für Historie und Aktivitäten)
+- id
+- containerId (Referenz auf Container)
+- taskId (optional: Referenz auf Task, wenn Scan im Kontext eines Auftrags passiert)
+- scannedByUserId
+- scannedAt (Timestamp)
+- scanContext (ENUM, z. B.:
+  - "WAREHOUSE_INFO" (allgemeiner Info-Scan im Lager),
+  - "TASK_ACCEPT_AT_CUSTOMER" (Fahrer scannt beim Kunden zur Auftragsannahme),
+  - "TASK_COMPLETE_AT_WAREHOUSE" (Fahrer scannt im Lager zur Auftragsabgabe),
+  - "CUSTOMER_INFO" (optional, reiner Info-Scan beim Kunden),
+  - weitere sinnvolle Kontexte nach Bedarf)
+- locationType (ENUM: "WAREHOUSE", "CUSTOMER", "OTHER")
+- locationDetails (optional: Freitext, z. B. "Tor 3", "Regal A-17")
+- extraData (optional JSON/Freitext für Debug oder Zusatzinfos)
+- createdAt (idR = scannedAt)
+
+f) ActivityLog (kann auch direkt aus Task + ScanEvent abgeleitet werden, aber bitte als eigene Entität anlegen ODER sauber dokumentieren, wie du es ableitest)
+- id
+- taskId (Referenz auf Task)
+- userId (optional: wer die Aktion ausgelöst hat)
+- type (ENUM, z. B.:
+  - "TASK_CREATED",
+  - "TASK_ASSIGNED",
+  - "TASK_ACCEPTED",
+  - "TASK_COMPLETED",
+  - "CONTAINER_SCANNED_AT_CUSTOMER",
+  - "CONTAINER_SCANNED_AT_WAREHOUSE"
+  - etc.)
+- message (kurzer lesbarer Text für den Aktivitäten-Tab, z. B. „Fahrer Müller hat Container XYZ beim Kunden gescannt (Auftrag angenommen).“)
+- timestamp
+- createdAt
+
+g) Optional: WeightMeasurement (wenn du Gewicht explizit modellieren möchtest)
+- id
+- containerId
+- taskId (optional)
+- measuredByUserId
+- weightValue
+- weightUnit
+- measuredAt
+
+2. Statusmodell für Task / Job (Auftrag)
+
+Definiere ein klares Statusmodell als ENUM für Task.status. Ein möglicher Ablauf:
+
+- "PLANNED"      – Auftrag wurde vom Admin erstellt, noch keinem Fahrer zugewiesen oder nur geplant.
+- "ASSIGNED"     – Auftrag ist einem Fahrer zugewiesen, aber noch nicht von ihm „aktiv angenommen“.
+- "ACCEPTED"     – Fahrer hat den Auftrag aktiv angenommen (durch Scan beim Kunden).
+- "PICKED_UP"    – Container wurde beim Kunden aufgenommen (kann mit ACCEPTED zusammenfallen, aber du kannst auch trennen, wenn nötig).
+- "IN_TRANSIT"   – Container befindet sich auf dem Weg zum Lager.
+- "DELIVERED"    – Container ist im Lager angekommen (Scan im Lager).
+- "COMPLETED"    – Auftrag ist fachlich abgeschlossen (inkl. Zuweisung Gewicht im System).
+- "CANCELLED"    – Auftrag wurde storniert.
+
+Bitte:
+- in den Task-Daten zusätzlich zu status einzelne Timestamps für wichtige Schritte speichern, z. B.:
+  - createdAt (bereits erwähnt)
+  - assignedAt
+  - acceptedAt
+  - pickedUpAt
+  - deliveredAt
+  - completedAt
+  - cancelledAt
+- Diese Timestamps sollen für den Aktivitäten- / Historienbereich genutzt werden.
+
+3. Verbindung zwischen Scans, Status-Updates und Timestamps
+
+Implementiere eine klare Logik, wie Scans den Status und die Timestamps beeinflussen:
+
+a) Scan im Lager, allgemeiner Info-Scan (kein Task-Kontext)
+- scanContext: "WAREHOUSE_INFO"
+- Wirkung:
+  - Keine Statusänderung bei Task, lediglich Infoanzeige in der UI.
+  - Optional: Log-Eintrag in ActivityLog (Typ z. B. "CONTAINER_SCANNED_AT_WAREHOUSE_INFO").
+
+b) Fahrer öffnet einen konkreten Auftrag und klickt auf „Container scannen“ beim Kunden:
+- Der Scan wird mit dem zum Auftrag passenden containerId erwartet.
+- scanContext: "TASK_ACCEPT_AT_CUSTOMER".
+- Wenn der gescannte Container zur Aufgabe passt:
+  - Task.status -> "ACCEPTED" (oder ggf. direkt "PICKED_UP", je nach gewünschtem Detailgrad).
+  - Task.acceptedAt = scannedAt.
+  - ScanEvent anlegen mit Bezug auf taskId, containerId, scannedByUserId etc.
+  - ActivityLog-Eintrag, z. B.:
+    - type: "TASK_ACCEPTED"
+    - message: „Fahrer X hat Auftrag Y (Container Z) beim Kunden gescannt (Auftrag angenommen).“
+- Wenn falscher Container:
+  - KEIN Statuswechsel.
+  - Fehlermeldung in der UI.
+  - Optional: ScanEvent mit Kennzeichnung, dass es ein "INVALID_CONTAINER_FOR_TASK" war.
+
+c) Fahrer kommt mit dem Container ins Lager und scannt dort:
+- scanContext: "TASK_COMPLETE_AT_WAREHOUSE".
+- Der Scan sollte wieder mit dem zum Auftrag passenden containerId verknüpft sein.
+- Wirkung:
+  - Task.status -> "DELIVERED" oder direkt "COMPLETED", je nachdem, ob noch ein Gewicht hinterlegt werden muss.
+  - Task.deliveredAt = scannedAt.
+  - Falls Gewicht automatisch gesetzt wird: Task.completedAt = Zeitpunkt der Gewichtserfassung.
+  - ScanEvent anlegen (taskId, containerId, scannedByUserId).
+  - ActivityLog-Eintrag(e), z. B.:
+    - type: "CONTAINER_SCANNED_AT_WAREHOUSE"
+    - type: "TASK_COMPLETED" (wenn der Auftrag abgeschlossen wird)
+- Zusätzlich:
+  - Container.status entsprechend aktualisieren (z. B. "AT_WAREHOUSE").
+  - Container.quantity und quantityUnit im System mit dem gemessenen/übernommenen Gewicht aktualisieren.
+
+4. Aktivitäten- / Historien-Tab für Admin
+
+- Du sollst basierend auf ActivityLog (oder abgeleitet aus Task + ScanEvent) eine API/Abfrage bereitstellen, mit der:
+  - pro Task alle relevanten Aktivitäten in zeitlicher Reihenfolge abgerufen werden können.
+  - optional eine globale Aktivitätenliste (z. B. die letzten X Events) angezeigt werden kann.
+- Die Einträge sollen jeweils enthalten:
+  - timestamp
+  - type
+  - user (Name, falls vorhanden)
+  - Container (Label/ID)
+  - Task (Titel/ID)
+  - message (lesbarer Text für UI)
+
+5. Konsistenz und Fehlertoleranz
+
+- Stelle sicher, dass:
+  - Bei jedem Statuswechsel des Task die Timestamps korrekt gesetzt werden.
+  - Statuswechsel nur in sinnvollen Übergängen erlaubt sind (z. B. nicht von PLANNED direkt auf COMPLETED ohne Zwischenstufen).
+  - Transaktionen / atomare Updates genutzt werden, wenn dein Tech-Stack das hergibt (z. B. bei gleichzeitiger Änderung von Task + Container + ScanEvent + ActivityLog).
+- Validierung:
+  - Wenn ein Scan im Kontext eines Tasks passiert:
+    - Prüfe, ob Task.status einen Übergang erlaubt (z. B. von ASSIGNED -> ACCEPTED).
+    - Prüfe, ob der gescannte Container zum Task passt.
+
+6. Dokumentation im Code
+
+- Dokumentiere im Code (Kommentare oder kurze Doku-Datei), welches Event oder welche Aktion welchen Statuswechsel auslöst.
+- Beschreibe kurz:
+  - welche Felder in Task angepasst werden (status, *At-Timestamps),
+  - welche neuen ScanEvents und ActivityLog-Einträge erzeugt werden.
+
+WICHTIG:
+- Bitte die oben beschriebenen Entitäten, Enums und Timestamps im Datenmodell sauber anlegen.
+- Implementiere die Status- und Timestamp-Logik so, dass alle beschriebenen Use-Cases (QR-Scan im Lager, Scan beim Kunden zur Auftragsannahme, Scan im Lager zur Auftragsabgabe, Aktivitäten-Historie) vollständig unterstützt werden.

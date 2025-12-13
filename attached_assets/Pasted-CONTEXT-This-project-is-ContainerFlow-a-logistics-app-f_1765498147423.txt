@@ -1,0 +1,169 @@
+CONTEXT
+=======
+
+This project is "ContainerFlow": a logistics app for waste containers with:
+
+- React Native + Expo (SDK 54) for mobile (Android & iOS) + web
+- Node.js + Express backend with REST API under /api
+- PostgreSQL + Drizzle ORM as the only database layer
+- Database hosted on Supabase, using DATABASE_URL (PostgreSQL URI)
+- Shared schema in shared/schema.ts
+- Roles: ADMIN and DRIVER
+- QR-code based container identification (stable codes, printed on containers)
+- Task lifecycle with 8 statuses and timestamps
+- Scan events and activity log for full history
+
+IMPORTANT GUARANTEES (MUST BE PRESERVED)
+========================================
+
+- All database access MUST go through Drizzle with process.env.DATABASE_URL.
+- The only active database is Supabase PostgreSQL.
+- The Expo app NEVER connects directly to Supabase.
+- QR codes are STABLE, created only on the server, stored in DB, never auto-regenerated.
+- Business logic (TaskStatus, ScanContext, ActivityLogType, UserRole, status transitions, QR code format) MUST remain logically the same. You may fix bugs but not change the core behavior.
+
+WHAT I WANT YOU TO DO NOW
+=========================
+
+Perform a COMPLETE TECHNICAL AUDIT of the project and FIX issues where needed, without changing the core business logic.
+
+Focus on:
+
+1) DATABASE & DRIZZLE CONFIGURATION
+-----------------------------------
+
+- Verify that the Drizzle configuration (db client) uses ONLY `process.env.DATABASE_URL` as the connection string.
+- Confirm that DATABASE_URL is treated as a full PostgreSQL URI (e.g. from Supabase) and that the pg driver is used correctly.
+- Ensure SSL is correctly configured for Supabase (e.g. `ssl: true` or equivalent where required).
+- Remove ANY leftover code that:
+  - connects to a local Replit PostgreSQL DB,
+  - hardcodes host/user/password/port,
+  - or uses any other DB client besides the canonical Drizzle instance.
+- Ensure there is exactly ONE source of truth for the database client, and all queries go through it.
+
+2) SCHEMA & MIGRATIONS (DRIZZLE)
+--------------------------------
+
+- Inspect shared/schema.ts and the migrations setup.
+- Verify that all tables required by the business logic exist:
+  - users
+  - customers
+  - customerContainers / warehouseContainers (or equivalent)
+  - tasks
+  - scanEvents
+  - activityLogs
+  - fillHistory
+- Verify that the database schema in Supabase matches the Drizzle schema.
+- Confirm that the scripts in package.json (e.g. `db:push`, `db:migrate`, etc.) correctly apply the schema to the Supabase DB via DATABASE_URL.
+- If needed, adjust migration scripts so that a single command (e.g. `npm run db:push`) fully syncs the schema from shared/schema.ts to Supabase.
+
+3) HEALTH CHECK & BASIC QUERIES
+-------------------------------
+
+- Confirm that `GET /api/health`:
+  - performs a real DB query (e.g. `select 1` or a simple query against a small table),
+  - returns a JSON structure like:
+    `{ "status": "ok", "database": "connected", "timestamp": "..." }`
+  - returns a degraded status and proper error message if the DB is not reachable.
+
+- Add or verify simple endpoints that read a few rows from key tables (e.g. `/api/users`, `/api/tasks`) and confirm they use the Supabase-backed DB via Drizzle.
+
+4) QR CODE LOGIC
+----------------
+
+- Verify that QR codes are:
+  - generated ONLY on the server when a new container is created,
+  - stored in the corresponding table (warehouse/customer containers),
+  - NEVER auto-regenerated on server start, schema migration, or any other automatic process.
+
+- Confirm:
+  - QR format: `{type}-{containerId}` or the currently documented format.
+  - Lookup endpoints exist and work:
+    - `/api/containers/warehouse/qr/:qrCode`
+    - `/api/containers/customer/qr/:qrCode`
+  - Admin regeneration endpoint:
+    - e.g. `POST /api/containers/{type}/{id}/regenerate-qr`
+    - explicitly creates a new QR code, saves it, and logs the event in activityLogs.
+
+- Check that:
+  - There is NO QR generation in the frontend.
+  - The frontend only displays QR codes from the API or DB.
+  - QR codes for existing containers do not change unless the admin explicitly uses the regeneration endpoint.
+
+5) TASK & SCAN FLOW
+-------------------
+
+- Verify that the task status lifecycle is correctly implemented and enforced:
+  - PLANNED → ASSIGNED → ACCEPTED → PICKED_UP → IN_TRANSIT → DELIVERED → COMPLETED (or CANCELLED)
+  - Each step sets its corresponding timestamp (assignedAt, acceptedAt, pickedUpAt, inTransitAt, deliveredAt, completedAt, cancelledAt).
+  - Invalid transitions (e.g. COMPLETED → ACCEPTED) are rejected with appropriate errors.
+
+- Inspect the scan-related endpoints (e.g. `/api/scan`, `/api/tasks/:id/accept`, etc.) and ensure:
+  - They correctly update task statuses and timestamps.
+  - They correctly create entries in scanEvents and activityLogs with the proper ScanContext and ActivityLogType.
+  - They validate that the scanned QR code matches the expected container for the given task.
+
+- Fix any inconsistencies or bugs in the scan/task logic, but DO NOT change the intended workflow.
+
+6) EXPO / FRONTEND CONFIGURATION
+--------------------------------
+
+- Inspect the Expo config (app.json or app.config.ts) and ensure:
+  - The public domain is read via `process.env.EXPO_PUBLIC_DOMAIN`.
+  - No hardcoded dev URLs like `http://localhost:5000` or old Replit URLs are used.
+
+- In the API client used by the app (for example `client/lib/query-client.ts` or dedicated api module):
+  - Confirm that the API base URL is constructed like:
+    `const API_BASE_URL = "https://" + process.env.EXPO_PUBLIC_DOMAIN + "/api";`
+  - Ensure that ALL API calls (tasks, containers, scans, activities, auth) use this API_BASE_URL.
+  - Remove any leftover hardcoded URLs.
+
+7) AUTH & ROLES
+---------------
+
+- Verify that:
+  - The auth mechanism (email/password + Replit auth) is wired correctly to the users table.
+  - The first Replit user becomes ADMIN, others default to DRIVER (as described).
+  - Role checking is correctly enforced in the API:
+    - ADMIN-only routes (e.g. container/task creation, QR regen, activity overview).
+    - DRIVER-only / driver-specific routes (e.g. own tasks).
+  - There is no path where a DRIVER can perform ADMIN operations.
+
+8) ERROR HANDLING & LOGGING
+---------------------------
+
+- Ensure public API endpoints:
+  - return proper HTTP status codes (400, 401, 403, 404, 409, 500),
+  - respond with clear JSON error messages (`{ "error": "..." }`),
+  - do not leak sensitive information (no passwords, keys, full connection strings).
+
+- Add or verify basic logging for:
+  - server start (log DB host / project, WITHOUT credentials),
+  - DB connection errors,
+  - critical failures in QR generation, task updates, and scanning.
+
+9) CLEANUP
+----------
+
+- Remove:
+  - any unused environment variables related to legacy DB connections,
+  - any obsolete DB client files or outdated configuration files,
+  - any old experimental routes or debugging endpoints that are no longer needed.
+
+- Update comments and README (if present) so that it’s clear:
+  - The ONLY database is Supabase PostgreSQL via DATABASE_URL.
+  - The Expo app always talks to the backend, never to the DB directly.
+
+FINAL GOAL
+==========
+
+After your changes and checks:
+
+- `/api/health` should report `"status": "ok", "database": "connected"` when Supabase is reachable.
+- All database queries must go through Drizzle using `process.env.DATABASE_URL`.
+- The mobile app (Expo) must communicate only via `https://<EXPO_PUBLIC_DOMAIN>/api`.
+- QR codes must be stable and correct.
+- Task, scan and activity logging must behave consistently, with proper status transitions and relations.
+- There must be no leftover references to any old/local database configuration.
+
+Please perform this full audit and apply the necessary fixes while preserving the existing business logic.

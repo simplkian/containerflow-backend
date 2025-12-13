@@ -1,0 +1,98 @@
+Implementiere ein Admin-Modul „Layout-Verwaltung“ für regelmäßige Umstrukturierungen (alle ~3 Monate). Ziel: Hallen/Stationen/Stand-Zuordnung und Stand-Material-Zuordnung müssen ohne Datenverlust änderbar sein, inkl. Audit und korrekter Auswertbarkeit.
+
+Bestehende Tabellen (relevant)
+
+halls(id, code, name)
+
+stations(id, hall_id, code, name)
+
+stands(id, station_id, identifier, material_id, qr_code UNIQUE, is_active, position_meta, updated_at)
+
+boxes(id, stand_id NULLABLE, qr_code, serial, status)
+
+task_events, activity_logs vorhanden
+
+Kernanforderungen
+
+Admin kann Stationen zwischen Hallen verschieben:
+
+UI: Halle wählen → Stationen anzeigen → „Station verschieben nach Halle…“
+
+Backend: update stations.hall_id
+
+Audit: activity_logs + task_events (action='STATION_MOVED') mit before/after
+
+Admin kann Stände einer Station verwalten:
+
+Liste aller Stände einer Station (max 8 sinnvoll, aber nicht hart enforced)
+
+Stand bearbeiten:
+
+material_id ändern (Dropdown Material)
+
+is_active toggle
+
+station_id ändern (Stand umziehen)
+
+Jeder Change schreibt Audit:
+
+action='STAND_UPDATED' oder 'STAND_MOVED' oder 'STAND_DEACTIVATED'
+
+before/after JSON
+
+Professionelle Historie (empfohlen):
+Lege neue Tabelle stand_placements an:
+
+id, stand_id, station_id, valid_from, valid_to NULL, changed_by_user_id, reason
+Regeln:
+
+Beim Erstellen eines Standes: initiale placement row
+
+Beim Stand-Umzug:
+
+close current placement (valid_to=now)
+
+create new placement (valid_from=now)
+
+Der aktive placement bestimmt den aktuellen Standort.
+
+Wenn stand_placements implementiert ist:
+
+stands.station_id bleibt optional als Cache, aber die Wahrheit ist placement.
+
+APIs sollen station→stands über aktive placement ermitteln.
+
+Box-Konsistenz
+Wenn ein Stand deaktiviert wird (is_active=false):
+
+Wenn eine Box auf diesem Stand steht:
+
+setze box.stand_id=NULL (Box ist entfernt)
+
+schreibe Audit action='BOX_UNPLACED_DUE_TO_STAND_DEACTIVATION'
+
+Wenn ein Stand umzieht:
+
+Box bleibt am Stand (Stand bleibt gleich, nur Standort ändert sich), kein box update nötig.
+
+UI: Admin Layout-Verwaltung
+
+Screen 1: Hallen → Stationen → Station bearbeiten (inkl. Umzug)
+
+Screen 2: Station Detail → Stände (bearbeiten: Material, aktiv, umziehen)
+
+Alle Auswahlfelder als Dropdowns (keine Freitexte)
+
+Keine operativen Rollenrestriktionen
+
+Operative Task-Funktionen bleiben für alle offen („jeder kann alles“).
+
+Admin-only gilt nur für Stammdaten/Layout.
+
+Lieferung:
+
+DB Migration (stand_placements wenn gewählt)
+
+Controller/Service + UI
+
+README_LAYOUT.md mit Beispielen und Edge Cases

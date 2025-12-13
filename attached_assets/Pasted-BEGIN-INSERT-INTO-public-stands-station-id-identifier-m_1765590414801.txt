@@ -1,0 +1,58 @@
+BEGIN;
+
+INSERT INTO public.stands (
+  station_id,
+  identifier,
+  material_id,
+  qr_code,
+  sequence,
+  daily_full,
+  daily_task_time_local,
+  is_active,
+  created_at,
+  updated_at
+)
+SELECT
+  st.id                                AS station_id,
+  v.identifier                         AS identifier,
+  m.id                                 AS material_id,
+  v.qr_code                            AS qr_code,
+  v.sequence                           AS sequence,
+  v.daily_full                         AS daily_full,
+  v.daily_task_time_local              AS daily_task_time_local,
+  true                                 AS is_active,
+  now()                                AS created_at,
+  now()                                AS updated_at
+FROM (
+  VALUES
+    -- identifier, station_code, material_code_or_name, qr_code, sequence, daily_full, daily_task_time_local
+
+    -- Halle K13 – Station S01 – Kupfer
+    ('ST-K13-S01-CU-001', 'K13-S01', 'KUPFER', '{"t":"STAND","id":"ST-K13-S01-CU-001"}', 1, true,  '06:00'),
+    ('ST-K13-S01-CU-002', 'K13-S01', 'KUPFER', '{"t":"STAND","id":"ST-K13-S01-CU-002"}', 2, true,  '06:00'),
+
+    -- Halle K13 – Station S01 – Aluminium
+    ('ST-K13-S01-ALU-001', 'K13-S01', 'ALUMINIUM', '{"t":"STAND","id":"ST-K13-S01-ALU-001"}', 3, false, NULL),
+
+    -- Halle K18 – Station S01 – Metall gemischt
+    ('ST-K18-S01-MIX-001', 'K18-S01', 'MISCHSCHROTT', '{"t":"STAND","id":"ST-K18-S01-MIX-001"}', 1, true,  '06:00'),
+    ('ST-K18-S01-MIX-002', 'K18-S01', 'MISCHSCHROTT', '{"t":"STAND","id":"ST-K18-S01-MIX-002"}', 2, false, NULL),
+
+    -- Außenbereich
+    ('ST-OUT-S01-PAP-001', 'OUT-S01', 'PAPIER', '{"t":"STAND","id":"ST-OUT-S01-PAP-001"}', 1, false, NULL)
+
+) AS v(identifier, station_code, material_key, qr_code, sequence, daily_full, daily_task_time_local)
+JOIN public.stations st
+  ON st.code = v.station_code
+JOIN public.materials m
+  ON (m.code = v.material_key OR m.name = v.material_key)
+ON CONFLICT (qr_code) DO UPDATE SET
+  station_id = EXCLUDED.station_id,
+  identifier = EXCLUDED.identifier,
+  material_id = EXCLUDED.material_id,
+  sequence = EXCLUDED.sequence,
+  daily_full = EXCLUDED.daily_full,
+  daily_task_time_local = EXCLUDED.daily_task_time_local,
+  updated_at = now();
+
+COMMIT;

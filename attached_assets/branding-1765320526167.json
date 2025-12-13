@@ -1,0 +1,109 @@
+{
+  "colorScheme": "light",
+  "fonts": [
+    {
+      "family": "ABC Diatype",
+      "role": "display"
+    },
+    {
+      "family": "IBM Plex Sans",
+      "role": "body"
+    },
+    {
+      "family": "sans-serif",
+      "role": "body"
+    }
+  ],
+  "colors": {
+    "primary": "#B2A3FF",
+    "accent": "#005CB8",
+    "background": "#FCFCFC",
+    "textPrimary": "#07080A",
+    "link": "#005CB8"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "IBM Plex Sans",
+      "heading": "ABC Diatype"
+    },
+    "fontStacks": {
+      "heading": [
+        "IBM Plex Sans",
+        "sans-serif"
+      ],
+      "body": [
+        "IBM Plex Sans",
+        "sans-serif"
+      ],
+      "paragraph": [
+        "IBM Plex Sans",
+        "sans-serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "24px",
+      "h2": "24px",
+      "body": "14px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "8px"
+  },
+  "components": {
+    "input": {
+      "borderColor": "#CCCCCC",
+      "borderRadius": "8px"
+    },
+    "buttonPrimary": {
+      "background": "#B2A3FF",
+      "textColor": "#07080A",
+      "borderRadius": "4px",
+      "shadow": "none"
+    },
+    "buttonSecondary": {
+      "background": "#1A1C25",
+      "textColor": "#005CB8",
+      "borderRadius": "0px",
+      "shadow": "none"
+    }
+  },
+  "images": {
+    "logo": "File saved at: attached_assets/logo.svg",
+    "favicon": "File saved at: attached_assets/favicon.png",
+    "ogImage": "https://storage.googleapis.com/replit/images/1765284997144_df2b9dc8538947db1aa5e8c7deca18ee.png"
+  },
+  "__framework_hints": [],
+  "__llm_logo_reasoning": {
+    "selectedIndex": 0,
+    "reasoning": "Logo #0 matches the brand name 'replit' and is located in the header, linking to the homepage, making it the most suitable choice.",
+    "confidence": 0.98
+  },
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": 0,
+      "text": "Remix this app",
+      "reasoning": "Button #0 has a vibrant blue background (#B2A3FF), which is the brand color, and action-oriented text 'Remix this app', making it the clear primary CTA."
+    },
+    "secondary": {
+      "index": 1,
+      "text": "Skip to content",
+      "reasoning": "Button #1 has a dark background (#1A1C25), which is distinctly different from the primary button's color, and serves a less prominent action ('Skip to content')."
+    },
+    "confidence": 0.95
+  },
+  "personality": {
+    "tone": "modern",
+    "energy": "medium",
+    "targetAudience": "developers and tech enthusiasts"
+  },
+  "designSystem": {
+    "framework": "unknown",
+    "componentLibrary": null
+  },
+  "confidence": {
+    "buttons": 0.95,
+    "colors": 0.9,
+    "overall": 0.925
+  }
+}

@@ -1,0 +1,135 @@
+CONTEXT
+=======
+
+This project is "ContainerFlow".  
+The system is:
+
+- Backend: Node.js + Express, Drizzle ORM, Supabase (PostgreSQL via DATABASE_URL)
+- Frontend: Expo React Native app (drivers + admins) and admin web UI
+- Features: containers (warehouse + customer), tasks, QR scanning, scan events, activity logs, roles (ADMIN, DRIVER)
+
+Supabase is connected and /api/health reports database: "connected".
+
+We now need to:
+
+1) Fix task lifecycle transitions and timestamp issues
+2) Improve scan behavior and responses (target container info)
+3) Add material + capacity validation
+4) Extend and unify container emptying (drivers + admins)
+5) Improve the UI (scan popup) visually
+6) Auto-refresh task list after state changes
+7) Implement push notifications for drivers
+
+Please read ALL parts and implement them consistently.
+
+
+===========================================================
+PART 1 — FIX TASK STATUS TRANSITIONS COMPLETELY
+===========================================================
+
+Problem:
+- When a driver scans a customer container to accept a task, the backend replies, but the task status does NOT change.
+- Logs show:
+  "Invalid task transition: PLANNED -> ACCEPTED"
+
+Correct lifecycle (business logic):
+
+PLANNED  
+→ ASSIGNED (admin assigns driver OR auto-assign when driver accepts)  
+→ ACCEPTED (driver scans customer container and confirms)  
+→ PICKED_UP  
+→ IN_TRANSIT  
+→ DELIVERED  
+→ COMPLETED  
+
+Requirements:
+
+1. Update the task state machine / transition validation so that:
+   - PLANNED → ACCEPTED is allowed, OR
+   - PLANNED → ASSIGNED → ACCEPTED happens automatically when the driver accepts via scan.
+   
+2. When the driver accepts via scan:
+   - status must become ACCEPTED
+   - acceptedAt timestamp must be set (correct type)
+   - assignedAt must be set if missing
+   - an appropriate activityLogs entry must be written
+
+3. The /pickup (or equivalent) endpoint must:
+   - require the previous state to be ACCEPTED
+   - transition to PICKED_UP
+   - set pickedUpAt
+   - log the activity
+
+4. Delivery / completion endpoints must:
+   - perform only valid transitions (e.g. PICKED_UP → IN_TRANSIT → DELIVERED → COMPLETED)
+   - set deliveredAt / completedAt accordingly
+   - write activity logs
+
+Eliminate all "Invalid task transition" errors for the valid workflow.
+
+
+===========================================================
+PART 2 — FIX TIMESTAMP HANDLING (value.toISOString issue)
+===========================================================
+
+Current error:
+"TypeError: value.toISOString is not a function"
+
+This happens when updating tasks AND when updating/emptying warehouse containers.
+
+Requirements:
+
+1. Inspect Drizzle schema for all timestamp columns on tasks, containers, scanEvents, activityLogs:
+   - Determine for each column if it uses mode: "date" or mode: "string" or default.
+
+2. For ALL code that writes to those columns:
+   - If mode: "date" → pass actual JS Date objects (`new Date()`).
+   - If mode: "string" → pass ISO strings (`new Date().toISOString()`).
+   - Ensure null is only used if column allows null.
+
+3. Fix all update/insert logic:
+   - task transitions
+   - container empty/reset
+   - scan handlers
+   - any other timestamp usage
+
+4. After this fix:
+   - No more value.toISOString errors anywhere.
+   - Timestamps are consistent and valid in Supabase.
+
+
+===========================================================
+PART 3 — SCAN RESPONSE: INCLUDE SOURCE + TARGET CONTAINER
+===========================================================
+
+When a driver scans the customer container (at the customer site) to accept a task:
+
+The API response MUST include:
+
+- The task object
+- The source (customer) container details
+- The target (warehouse) container details
+
+Shape example:
+
+```json
+{
+  "task": { ... },
+  "sourceContainer": {
+    "id": "...",
+    "label": "...",
+    "content": "...",
+    "unit": "kg",
+    "currentQuantity": ...,
+    "plannedPickupQuantity": ...
+  },
+  "targetContainer": {
+    "id": "...",
+    "label": "...",
+    "content": "...",
+    "capacity": ...,
+    "currentFill": ...,
+    "remainingCapacity": ...,
+    "unit": "kg"
+  }
+}

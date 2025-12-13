@@ -1,0 +1,348 @@
+Rolle & Arbeitsweise (zwingend)
+
+Du bist Lead Engineer (Backend + Mobile + Data).
+Du arbeitest im bestehenden Repo und implementierst fehlende Funktionen.
+Keine Workarounds über „einfach neue Tabs“ ohne Backend-Logik.
+Jede neue Funktion muss DB + API + UI + Audit beinhalten.
+
+Zielbild
+
+Die App ist eine QR-basierte Workflow-App für ein Automotive-Werk:
+
+Boxen bewegen sich zwischen Stationen
+
+Ständer definieren Material
+
+Tasks bilden Abholung → Lager → Wiegen → Entsorgung ab
+
+Zusätzlich: geplante automatische Aufgaben (nicht nur „jeden Tag“, sondern konfigurabel)
+
+Admin kann geplante Tasks voraus sehen, manuell anlegen, ändern und Sonderfälle im Lager verwalten
+
+Vollständige Aktivitätsanzeige und Analytics/Statistiken
+
+Online-only. Zeitzone: Europe/Berlin.
+
+1) Abteilung/Department: Umsetzung (optional aber empfohlen)
+
+Implementiere Departments, weil Analytics nach Team/Schicht/Einheit gefordert ist.
+
+Option A (empfohlen): Department Tabelle
+
+Department { id, name }
+
+User.departmentId?
+Vorteil: saubere Filter & Auswertungen
+
+Option B (minimal): User.departmentName string
+
+Wenn Repo klein bleiben soll.
+
+➡️ Implementiere Option A, außer es existiert bereits Option B.
+
+2) Manuelle Task-Erstellung (Pflicht)
+
+Admin muss Tasks manuell erstellen können, unabhängig von Scheduling.
+
+DB
+
+Erweitere Task um:
+
+source: TaskSource { SCHEDULED, MANUAL, ADHOC }
+
+scheduledFor: DateTime?
+
+createdById: String?
+
+API (Admin-only)
+
+POST /admin/tasks
+
+input: standId (oder stationId + standId), optional boxId (falls bekannt), optional scheduledFor
+
+effect:
+
+material wird über standId abgeleitet
+
+task status = OPEN
+
+AuditEvent: TASK_CREATED (source=MANUAL)
+
+UI (Admin)
+
+„Task manuell erstellen“
+
+Auswahl: Halle → Station → Stand (Material wird angezeigt)
+
+optional Box scannen/auswählen
+
+optional Datum/Uhrzeit (wenn direkt geplant)
+
+3) Geplante automatische Aufgaben: flexibel konfigurieren + Vorschau (Pflicht)
+
+Nicht nur „dailyFull“, sondern ein Scheduler-System, das Admin verwalten kann.
+
+3.1 DB: Scheduling-Entität (Pflicht)
+
+Füge TaskSchedule hinzu:
+
+id
+
+name
+
+isActive
+
+standId (Pflicht)
+
+stationId (optional, falls Stand nicht station-fix ist)
+
+ruleType enum { DAILY, WEEKLY, INTERVAL }
+
+timeLocal string (z. B. "06:00")
+
+für WEEKLY: weekdays int[] (1=Mon..7=Sun)
+
+für INTERVAL: everyNDays int + startDate date
+
+timezone string default "Europe/Berlin"
+
+createDaysAhead int default 7 (wie viele Tage im Voraus erzeugen)
+
+dedupStrategy (unique key pro schedule+date)
+
+createdById
+
+updatedAt
+
+3.2 Scheduler-Logik (Server)
+
+Implementiere einen Cron (z. B. stündlich) der:
+
+alle aktiven TaskSchedule lädt
+
+für jeden Schedule Tasks für die nächsten N Tage erzeugt (N = createDaysAhead)
+
+pro geplantem Datum nur 1 Task (dedupKey Unique)
+
+Tasks bekommen:
+
+source=SCHEDULED
+
+scheduledFor=<date> (genaues Datum)
+
+status=OPEN (oder SCHEDULED_OPEN, falls du optional einen separaten Status willst – aber nur wenn du die gesamte State Machine erweitern willst; bevorzugt: OPEN + scheduledFor)
+
+DedupKey Pflicht:
+SCHED:${scheduleId}:${YYYY-MM-DD}
+
+3.3 Vorschau „nächste Tage“ (Admin)
+
+Admin muss sehen können:
+
+welche Aufgaben für die nächsten X Tage geplant sind (auch wenn noch nicht erzeugt)
+
+welche schon erzeugt wurden
+
+Implementiere:
+
+GET /admin/schedules/preview?days=14
+
+Ergebnis: Liste von (date, scheduleId, stand, station, material, plannedTimeLocal, willCreateTask=true/false, existingTaskId?)
+
+UI:
+
+Admin Screen „Geplante Aufgaben“
+
+Tab 1: „Schedules“ (CRUD)
+
+Tab 2: „Vorschau nächste 7/14/30 Tage“
+
+Tab 3: „Erzeugte geplante Tasks“ (filterbar)
+
+3.4 Schedule CRUD (Admin)
+
+POST /admin/schedules
+
+PATCH /admin/schedules/:id
+
+DELETE /admin/schedules/:id (oder deactivate)
+
+POST /admin/schedules/:id/run (manuell erzeugen für next N days)
+
+UI:
+
+Schedule erstellen:
+
+Name
+
+Stand auswählen (zeigt Material)
+
+Regeltyp (Daily/Weekly/Interval)
+
+Uhrzeit
+
+DaysAhead
+
+Aktiv/Deaktiv
+
+4) Lager-Container-Management (Pflicht, erweiterbar)
+
+Du willst „Container manuell leeren“ und Lager-Behälter-Logik verwalten.
+
+4.1 WarehouseContainer erweitern
+
+capacityKg
+
+currentKg (optional, wenn du Füllstände pflegen willst)
+
+isFull
+
+isBlocked
+
+lastEmptiedAt
+
+notes
+
+4.2 Manuelles Leeren
+
+Admin oder Warehouse-Rolle muss:
+
+Container als „geleert“ markieren
+
+optional currentKg auf 0 setzen
+
+isFull=false setzen
+
+API:
+
+POST /warehouse-containers/:id/empty
+
+input: optional reason, optional confirmedKgBeforeEmpty
+
+writes AuditEvent: CONTAINER_EMPTIED
+
+UI:
+
+Container Detail:
+
+„Leeren“ Button (mit Bestätigung)
+
+Anzeige Historie (Events)
+
+4.3 Container-Zielvorschlag im Workflow
+
+Wenn Task Material = X:
+
+schlage Container vor:
+
+materialId = X
+
+isFull=false
+
+isBlocked=false
+
+wenn kein Container verfügbar:
+
+zeige „Kein Container verfügbar – Admin kontaktieren“
+
+Task darf nicht final disposed werden ohne containerId (wenn du das möchtest; ansonsten optional)
+
+5) Activity Feed / Audit Trail (Pflicht)
+
+Implementiere AuditEvent robust.
+
+Pflichtdaten:
+
+timestamp (server)
+
+actorUserId
+
+actorRole
+
+actorDepartmentId (falls Departments)
+
+action
+
+entityType/entityId
+
+meta: stationId, hallId, standId, boxId, materialId, containerId, taskId
+
+before/after json
+
+APIs:
+
+GET /activity mit Filtern (from/to/material/station/hall/user/department/action)
+
+GET /tasks/:id/events
+
+UI:
+
+Activity Screen:
+
+sekundengenauer Zeitstempel
+
+Actor + Abteilung
+
+Kontext: Material, Station/Halle, Box, Container
+
+Filterchips + Zeitraum-Auswahl
+
+6) Analytics / Stats (Pflicht)
+
+Baue aggregierte Statistiken, basierend auf DISPOSED Tasks mit weightKg.
+
+6.1 Endpunkte
+
+GET /analytics/materials?from&to (sum kg, count tasks)
+
+GET /analytics/stations?from&to (station → material breakdown)
+
+GET /analytics/halls?from&to
+
+GET /analytics/users?from&to
+
+GET /analytics/departments?from&to (wenn Departments)
+
+GET /analytics/lead-times?from&to&by=station|material (Durchlaufzeiten)
+
+GET /analytics/backlog?olderThanHours=... (hängende Aufgaben)
+
+6.2 UI Dashboard (Admin)
+
+Zeitraumfilter (7/30/custom)
+
+Karten: Gesamt kg, Top Material, Top Station, offene Tasks
+
+Tabellen: Materialliste, Stationsliste
+
+optional simple Charts (nur echte Daten)
+
+7) Akzeptanzkriterien (zwingend)
+
+Admin kann Schedules erstellen und Vorschau für nächste Tage sehen.
+
+Scheduler erzeugt deduplizierte Tasks für die Zukunft (DaysAhead).
+
+Admin kann Tasks manuell erstellen.
+
+WarehouseContainer kann manuell geleert werden (Audit).
+
+Activity zeigt jede Aktion sekundengenau.
+
+Analytics stimmt mit Tasks/Events überein.
+
+8) Lieferumfang
+
+Prisma Migrationen + Seed (inkl. 2 Schedules: daily 06:00, weekly Mo-Fr 14:00)
+
+Scheduler Cron + Preview Endpoint
+
+Admin Screens (Schedules + Preview + Manual Task Create)
+
+Warehouse Container Screens (List + Detail + Empty action)
+
+Activity + Analytics Screens
+
+README_STATS.md + README_SCHEDULER.md
+
+Keine Pseudocode-Ausgaben. Code vollständig.

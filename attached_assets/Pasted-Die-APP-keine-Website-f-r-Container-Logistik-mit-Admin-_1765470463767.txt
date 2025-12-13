@@ -1,0 +1,198 @@
+Die APP (keine Website) für Container-Logistik mit Admin-/Driver-Rollen, QR-Scans, Tasks/Aufträgen und Aktivitäten läuft technisch, soll aber jetzt VISUELL und UX-SEITIG professionell FEINGESCHLIFFEN werden.
+
+BITTE KONZENTRIERE DICH NUN AUSSCHLIESSLICH AUF:
+- UI-Design
+- Layout
+- Typografie
+- Abstände
+- visuelle Hierarchie
+- States (Hover, Active, Disabled, Loading)
+- Light/Dark Mode
+- Lesbarkeit & Accessibility
+
+DIE FUNKTIONALE LOGIK SOLL UNVERÄNDERT BLEIBEN!
+
+--------------------------------------------------
+1) GRUND-UI & TYPOGRAFIE
+--------------------------------------------------
+
+- Definiere ein konsistentes Design-System innerhalb der App:
+  - Schriftgrößen (z. B. Heading 1, 2, 3, Body, Caption).
+  - Font-Weights (z. B. Regular, Medium, Semi-Bold).
+  - Zeilenhöhen und Abstände.
+
+- Stelle sicher, dass:
+  - Titel/Überschriften deutlich größer und/oder kräftiger sind als normaler Text.
+  - Sekundäre Informationen optisch zurückgenommen werden (kleiner, grau, weniger dominant).
+  - Kontraste immer ausreichend sind (WCAG-orientiert, z. B. ~4.5:1 für normalen Text).
+
+- Einheitliche Abstände:
+  - Konsistente Padding- und Margin-Werte (z. B. 8/12/16/24 px Raster).
+  - Karten/Container (Cards) sollen genug Innenabstand haben, damit Inhalte nicht „gequetscht“ wirken.
+
+--------------------------------------------------
+2) BUTTONS & INTERAKTIVE ELEMENTE
+--------------------------------------------------
+
+- Buttons:
+  - Primär-Button (z. B. für wichtigste Aktion wie „Auftrag speichern“, „Scan starten“).
+  - Sekundär-Button (z. B. „Abbrechen“, „Zurück“).
+  - Danger-Button (z. B. „Leeren/Reset“, „Löschen“).
+
+- Für alle Buttons:
+  - Klare visuelle Unterscheidung:
+    - Primär: starke Farbe (z. B. Markenfarbe), gut lesbarer Text.
+    - Sekundär: neutrale Farbe (z. B. graue Outline oder heller Grauton).
+    - Danger: Rot-Variante mit hoher Lesbarkeit.
+  - States:
+    - Normal
+    - Hover (leicht dunkler/heller, Cursor, evtl. Schatten)
+    - Active (kurzzeitig gedrückt)
+    - Disabled (blasser, nicht klickbar, Cursor standard).
+
+- WICHTIG:
+  - Dunkle Buttons müssen IMMER eine helle Schriftfarbe erhalten (z. B. Weiß oder sehr helles Grau).
+  - Auf ausreichenden Kontrast achten (kein dunkelgrauer Text auf mittelgrauem Button).
+
+--------------------------------------------------
+3) LIGHT MODE & DARK MODE
+--------------------------------------------------
+
+- Stelle sicher, dass ALLE Screens sowohl im Light Mode als auch im Dark Mode gut aussehen:
+  - Hintergrundfarben:
+    - Light Mode: helle, neutrale Hintergründe, klare Card-Flächen.
+    - Dark Mode: dunkle Hintergründe, aber nicht komplett schwarz (z. B. sehr dunkles Grau).
+  - Textfarben:
+    - Grundtext: sehr dunkel im Light Mode, sehr hell im Dark Mode.
+    - Sekundärtext: leicht abgeschwächt, aber weiterhin gut lesbar.
+  - Borders/Dividers:
+    - Subtile Linien zur Strukturierung, aber nicht zu dominierend.
+
+- Teste die wichtigsten Screens in beiden Modi:
+  - Admin-Dashboard
+  - Container-Liste / -Detail
+  - Task-Liste / Task-Detail
+  - Scan-Ansicht / Scan-Ergebnis-Popups
+  - Aktivitäten-/Historien-Tab
+
+--------------------------------------------------
+4) TASKS & STATUS-BADGES
+--------------------------------------------------
+
+- Tasks/Aufträge haben verschiedene Statuswerte (z. B. PLANNED, ASSIGNED, ACCEPTED, IN_TRANSIT, DELIVERED, COMPLETED, CANCELLED).
+
+- Gestalte für jeden Status ein kleines, klar erkennbares Badge/Label:
+  - Form: abgerundetes Label mit Hintergrundfarbe + Text.
+  - Beispiele:
+    - PLANNED: neutrale Farbe (z. B. grau/blau)
+    - ASSIGNED: leichte Akzentfarbe
+    - ACCEPTED: grünlich
+    - IN_TRANSIT: blau
+    - DELIVERED/COMPLETED: kräftig grün
+    - CANCELLED: rot oder dunkler Rotton
+
+- Stelle sicher:
+  - Text ist immer gut lesbar (hell auf dunkel oder dunkel auf hell).
+  - Badges sind in Listen und Detailansichten konsistent und an derselben Stelle platziert.
+
+--------------------------------------------------
+5) SCREENS & LAYOUTS – ADMIN VS DRIVER
+--------------------------------------------------
+
+a) Admin-Ansichten:
+- Dashboard:
+  - Klar strukturierte Cards/Widgets (z. B. „Offene Tasks“, „Heute fällige Abholungen“, „Letzte Aktivitäten“).
+  - Übersichtliche Tabellen/Listen mit Headings, Zeilenabständen, Spaltenköpfen klar typografisch hervorgehoben.
+
+- Container-Ansicht:
+  - Listenansicht mit:
+    - Container-Name
+    - Inhalt
+    - Menge + Einheit
+    - Status-Badge
+    - Standort (Lager/Kunde)
+    - Aktionen (z. B. „Details“, „Bearbeiten“, „Leeren“)
+  - Detailansicht:
+    - Klare Sektionen mit Überschriften: „Stammdaten“, „Inhalt“, „Standort“, „Aktuelle Menge“.
+    - „Leeren“-Button als Danger-Button visuell hervorgehoben, mit klarer Warnung.
+
+- Aktivitäten/Historie:
+  - Zeitstrahl-ähnliche Darstellung oder Liste mit klaren Einträgen:
+    - Zeitstempel
+    - Fahrer/Benutzername
+    - Ereignistyp-Badge (z. B. „TASK_ACCEPTED“, „TASK_COMPLETED“)
+    - Kurzbeschreibung (lesbarer Text).
+  - Gute Zeilenabstände, alternate row styling oder dezente Trennlinien.
+
+b) Driver-Ansichten:
+- Task-Liste:
+  - Karten oder Listeneinträge mit:
+    - Titel des Auftrags
+    - Kunde/Ort
+    - Zeitpunkt/Datum
+    - Status-Badge
+  - Wichtigste Informationen fett/auffällig, Details etwas zurückgenommen.
+
+- Task-Detail:
+  - Klare Hierarchie:
+    - Oben: Titel, Kunde, Zeit, Status.
+    - Mitte: Container-Infos (Label, Inhalt, Menge).
+    - Unten: Buttons für Aktionen (z. B. „Container scannen“).
+  - Der „Container scannen“-Button soll optisch deutlich hervorgehoben sein (Primärbutton).
+
+--------------------------------------------------
+6) QR-SCAN-UI & POPUPS
+--------------------------------------------------
+
+- Scan-Ansicht:
+  - Ruhiger Hintergrund, deutlicher Bereich, der den Scan-Fokus markiert.
+  - Kurze, klare Anweisungstexte („Bitte QR-Code des Containers scannen“).
+
+- Nach erfolgreichem Scan:
+  - Zeige ein Modal/Popup mit:
+    - Container-Name
+    - Inhalt
+    - Menge + Einheit
+    - ggf. Ziel-Lagerplatz (für Driver gibt an, wohin er fahren soll).
+    - Erfolgstext, z. B. „Auftrag angenommen“ oder „Container im Lager übernommen“.
+  - Design:
+    - Card mit Schatten, abgerundeten Ecken, ausreichend Padding.
+    - Primär-Button „OK“ / „Weiter“.
+    - Gute Lesbarkeit der Infos, strukturierte Darstellung (Labels + Werte).
+
+- Fehlerfälle:
+  - Klare, visuell gut erkennbare Fehlermeldung im Popup (z. B. roter Textbereich).
+  - Kein reiner Konsolen-Log; Benutzer muss erkennen, was schiefgelaufen ist.
+
+--------------------------------------------------
+7) ACCESSIBILITY & FEEDBACK
+--------------------------------------------------
+
+- Füge visuelles Feedback für:
+  - Ladezustände (Spinner, Loading-Text).
+  - Erfolgsaktionen (Tooltip/Toast/Snackbar).
+  - Fehleraktionen (Toasts/Alerts in klaren Farben).
+
+- Prüfe:
+  - Tab-Reihenfolge (falls relevant).
+  - Fokuszustände bei wichtigen Buttons und Eingabefeldern.
+  - Mindest-Schriftgrößen und ausreichende Kontraste.
+
+--------------------------------------------------
+8) CODE-QUALITÄT & STRUKTUR
+--------------------------------------------------
+
+- Nutze möglichst:
+  - Wiederverwendbare UI-Komponenten (z. B. `Button`, `Card`, `Badge`, `Modal`, `Toast`).
+  - Trenne Layout-/Präsentationslogik von Geschäftslogik, d. h. UI-Komponenten sollen primär Props nutzen und nicht überall direkt fetch-Aufrufe enthalten.
+
+- Bereinige CSS/Styles:
+  - Entferne veraltete oder ungenutzte Styles.
+  - Verwende ein konsistentes Konzept (z. B. Utility-Klassen, Theme-Variablen, Design-Tokens).
+
+--------------------------------------------------
+WICHTIG:
+- Verändere KEINE fachliche Geschäftslogik (Statuswechsel, Endpunkte, Datenmodell).
+- Ziel dieses Schritts ist ausschließlich:
+  - Die App optisch und hinsichtlich UX so zu überarbeiten, dass sie wie ein professionelle, saubere Business-App wirkt.
+  - Lesbarkeit, Konsistenz und ein stimmiges Look & Feel in Light und Dark Mode sicherzustellen.

@@ -1,0 +1,32 @@
+Du arbeitest an einer bereits weitgehend fertiggestellten APP (keine Website). Bitte überarbeite jetzt vor allem das UI/UX-Design und die Admin-Funktionen nach folgenden Vorgaben:
+
+1. Farbdesign & Lesbarkeit
+- Stelle sicher, dass ALLE Buttons mit dunklem Hintergrund eine ausreichend helle Schriftfarbe haben, sodass sie klar und gut lesbar sind.
+- Überarbeite gegebenenfalls die Farbpalette, damit das gesamte Design stimmig und modern wirkt.
+- Achte konsequent auf gute Kontraste (Accessibility, z. B. WCAG-Richtlinien).
+- Implementiere bzw. überprüfe sowohl einen hellen Modus (Light Mode) als auch einen dunklen Modus (Dark Mode).
+- In beiden Modi müssen alle Texte, Buttons, Icons und Hinweise gut lesbar sein (kein zu dunkler Text auf dunklem Hintergrund bzw. zu heller Text auf hellem Hintergrund).
+
+2. Admin-Bereich: Container-Buttons
+- Es gibt einen Admin-Bereich und einen Bereich für Fahrer/Nutzer, in dem Container-Daten nur angesehen werden.
+- Buttons zum „Löschen“ bzw. „Auf Null setzen“ von Containern dürfen NUR im Admin-Bereich vorhanden sein.
+- Im normalen Container-Bereich, den Fahrer sehen, dürfen diese Lösch-/Reset-Buttons NICHT angezeigt werden (weder sichtbar noch klickbar).
+
+3. Bestätigung & Animation beim Zurücksetzen/Löschen
+- Wenn ein Admin im Admin-Bereich auf einen Button wie „Löschen“ oder „Auf Null setzen“ klickt, soll zuerst ein Bestätigungsdialog erscheinen.
+  - Beispiel: „Möchtest du diesen Container wirklich auf Null zurücksetzen?“
+  - Der Dialog soll zwei Optionen haben: „Ja, zurücksetzen“ und „Abbrechen“.
+- Erst wenn der Admin bestätigt, soll die Aktion ausgeführt werden.
+- Nach erfolgreichem Zurücksetzen/Löschen:
+  - Eine kurze Animation abspielen (z. B. Container-Element kurz ausfaden/einfaden oder eine kleine Erfolgsmotion).
+  - Eine gut sichtbare Erfolgsmeldung anzeigen, z. B. als Toast/Snackbar oder Hinweis:
+    - „Container XYZ wurde auf Null zurückgesetzt.“
+    - oder „Container XYZ wurde erfolgreich geleert.“
+- Achte auch hier auf gute Lesbarkeit der Meldungen (Kontrast, Schriftgröße).
+
+4. Allgemein
+- Passe alle relevanten Screens/Views entsprechend an.
+- Achte auf konsistentes Styling der Buttons (Größe, Abstände, Eckenradius, Hover-/Active-States).
+- Schreibe sauberen, gut strukturierten Code und kommentiere bei Bedarf kurz, wo du wichtige Änderungen für Admin-Funktionen, Bestätigungsdialoge und Animationen vornimmst.
+
+Bitte alle Punkte vollständig umsetzen.

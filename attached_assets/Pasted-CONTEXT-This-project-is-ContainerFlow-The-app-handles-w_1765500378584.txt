@@ -1,0 +1,249 @@
+CONTEXT
+=======
+
+This project is "ContainerFlow".  
+The app handles warehouse containers, customer containers, tasks, QR scanning flows, and driver/admin workflows.
+
+The backend is Node/Express with Drizzle ORM and Supabase (PostgreSQL).  
+The mobile app is Expo React Native.  
+
+We now need to fix several interconnected issues AND extend functionality.  
+Please read all points carefully and implement ALL of them together.
+
+
+===========================================================
+PART 1 — FIX TASK STATUS TRANSITIONS COMPLETELY
+===========================================================
+
+THE PROBLEM:
+- When a driver scans the customer container to accept a task, the backend returns HTTP 200,
+  BUT the task status does NOT actually update in the DB.
+- Logs show:
+    “Invalid task transition: PLANNED -> ACCEPTED”
+
+REQUIRED FIX:
+
+Implement the correct task lifecycle:
+
+PLANNED  
+→ ASSIGNED (admin assigns a driver OR auto-assign when driver scans)  
+→ ACCEPTED (driver scans customer container)  
+→ PICKED_UP  
+→ IN_TRANSIT  
+→ DELIVERED  
+→ COMPLETED  
+
+YOU MUST:
+
+1. Modify the state machine / allowedTransitions so that:
+   - PLANNED → ACCEPTED is ALLOWED
+   - OR system auto-inserts ASSIGNED and then ACCEPTED
+
+2. Ensure scanning the customer container always triggers:
+   - status = ACCEPTED  
+   - acceptedAt = new Date()  
+   - assignedAt is filled if missing  
+   - activity log entry
+
+3. /pickup endpoint must require ACCEPTED and transition to PICKED_UP correctly:
+   - status = PICKED_UP
+   - pickedUpAt = new Date()
+
+4. Later scanning at warehouse must transition to DELIVERED or COMPLETED properly:
+   - deliveredAt / completedAt timestamps set
+   - correct activity logs
+
+
+===========================================================
+PART 2 — FIX TIMESTAMP HANDLING (value.toISOString error)
+===========================================================
+
+The backend still throws:
+"TypeError: value.toISOString is not a function"
+
+This happens whenever you update tasks OR warehouse containers.
+
+REQUIRED FIX:
+
+1. Check Drizzle schema for timestamp columns:
+   - If mode: "date" → MUST use real JS Date objects
+   - If mode: "string" → MUST use ISO strings
+
+2. Fix all writes in:
+   - task transitions  
+   - container empty/reset logic  
+   - scan handling  
+   - any other update endpoints
+
+Every timestamp must now consistently match the schema type.
+
+No more value.toISOString errors.
+
+
+===========================================================
+PART 3 — SCAN RESPONSE MUST INCLUDE TARGET WAREHOUSE CONTAINER
+===========================================================
+
+When a driver scans the customer container:
+
+The backend must return:
+
+{
+  "task": { ...task data... },
+  "sourceContainer": { ...customer container... },
+  "targetContainer": {
+    "id": "...",
+    "label": "...",
+    "content": "...",
+    "capacity": ...,
+    "currentFill": ...,
+    "remainingCapacity": ...,
+    "unit": "kg" | "t"
+  }
+}
+
+This is REQUIRED so the UI popup can show:
+
+- Which warehouse container must be used  
+- How much capacity is available  
+- Which material it contains  
+- Whether it matches the customer container material  
+
+
+===========================================================
+PART 4 — MATERIAL MATCH VALIDATION
+===========================================================
+
+Whenever a task is created OR a scan tries to bind the task to a target warehouse container:
+
+You MUST enforce:
+
+sourceContainer.content === targetContainer.content
+
+If they differ, REJECT with:
+
+HTTP 400:
+{
+  "error": "Der Zielcontainer enthält ein anderes Material. Bitte wähle einen passenden Lagercontainer."
+}
+
+No task acceptance, no pickup, no progress if materials differ.
+
+
+===========================================================
+PART 5 — CAPACITY VALIDATION
+===========================================================
+
+When a driver accepts or picks up waste:
+
+- Compute remainingCapacity = capacity - currentFill
+- If task.plannedQuantity > remainingCapacity:
+  Reject with:
+  {
+    "error": "Zielcontainer hat nicht genug übriges Volumen für diese Menge."
+  }
+
+This must be enforced server-side.
+
+
+===========================================================
+PART 6 — UI SUPPORT FOR CONTAINER EMPTY FEATURE
+===========================================================
+
+Currently “empty container” works in the admin section.
+
+We need to:
+
+1. Allow BOTH DRIVER AND ADMIN to empty warehouse containers.
+   - Remove admin-only restriction in backend.
+   - Keep role check for other admin-only features.
+
+2. Add “Container leeren” button in the bottom navigation container screen:
+   - Confirmation dialog:
+       “Möchtest du diesen Container wirklich leeren?”
+   - On confirm → PATCH /api/containers/warehouse/:id
+   - Show success toast → “Container wurde erfolgreich geleert.”
+   - Refresh container view
+
+3. Disable button or show “Container ist bereits leer” for empty containers.
+
+
+===========================================================
+PART 7 — UI: SHOW TARGET CONTAINER AFTER SCANNING
+===========================================================
+
+When a task pops up after scanning the customer container:
+
+The UI must show:
+
+- Task title  
+- Task description  
+- Zielcontainer block:
+  - Container ID / label  
+  - Material / Inhalt  
+  - Kapazität (max)  
+  - aktueller Füllstand  
+  - Restkapazität  
+  - Einheit kg/t  
+
+The backend MUST send these fields in the scan response.
+
+
+===========================================================
+PART 8 — ACTIVITY LOGS
+===========================================================
+
+Ensure that:
+- Accepting task → activity log entry  
+- Pickup → activity log entry  
+- Delivery/completion → activity log entry  
+- Empty warehouse container → activity log entry  
+
+All timestamps must follow fixed schema types.
+
+
+===========================================================
+PART 9 — DO NOT CHANGE:
+===========================================================
+
+- Authentication system
+- QR code logic
+- User creation rules
+- Supabase configuration
+- Container schema
+- Scan event schema
+- Overall app navigation structure
+
+ONLY implement:
+
+- Task machine fix  
+- Scan response improvements  
+- Material/capacity validation  
+- UI/UX integration for target container  
+- Allow drivers to empty warehouse containers  
+- Timestamp consistency fixes  
+
+
+===========================================================
+GOAL (AFTER YOUR FIX)
+===========================================================
+
+After scanning customer container:
+- Task transitions from PLANNED/ASSIGNED → ACCEPTED  
+- UI popup shows target container with correct details  
+- Material is validated  
+- Capacity is validated  
+- No invalid transition error  
+
+Driver can:
+- Accept task  
+- Pick up  
+- Deliver/complete  
+- Empty warehouse containers  
+
+Admin sees correct progress in dashboard.
+
+No more:
+“Invalid task transition: PLANNED -> ACCEPTED”
+No more:
+"value.toISOString is not a function"

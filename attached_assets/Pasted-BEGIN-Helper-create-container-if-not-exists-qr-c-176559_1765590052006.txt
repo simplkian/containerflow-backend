@@ -1,0 +1,170 @@
+BEGIN;
+
+-- -----------------------------------------
+-- Helper: create container if not exists (qr_code unique)
+-- warehouse_containers:
+-- id (varchar, no default) -> we use gen_random_uuid()::text
+-- qr_code UNIQUE
+-- material_type NOT NULL
+-- material_id optional FK -> we try to resolve from materials by code/name
+-- max_capacity required
+-- -----------------------------------------
+
+-- You can adjust these defaults
+DO $$
+DECLARE
+  v_default_capacity real := 10000; -- kg
+BEGIN
+  -- no-op: just defining variable in a DO block
+END $$;
+
+-- -----------------------------------------
+-- 1) Kupfer (allgemein) - 2 Container
+-- -----------------------------------------
+DO $$
+DECLARE
+  mid text;
+BEGIN
+  SELECT id INTO mid FROM public.materials
+   WHERE code IN ('KUPFER','CU','COPPER')
+      OR upper(name) LIKE '%KUPFER%'
+   ORDER BY (code='KUPFER') DESC, (upper(name) LIKE '%KUPFER%') DESC
+   LIMIT 1;
+
+  -- if no matching material found, leave material_id NULL (still usable by material_type)
+  INSERT INTO public.warehouse_containers
+    (id, location, warehouse_zone, qr_code, material_type, material_id, content_description, current_amount, max_capacity, quantity_unit, status, is_active, is_full, is_blocked, notes, created_at, updated_at)
+  VALUES
+    (gen_random_uuid()::text, 'Lager', 'Zone A', '{"t":"WAREHOUSE_CONTAINER","id":"WH-CU-01"}', 'KUPFER', mid, 'Kupfer allgemein', 0, 10000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now()),
+    (gen_random_uuid()::text, 'Lager', 'Zone A', '{"t":"WAREHOUSE_CONTAINER","id":"WH-CU-02"}', 'KUPFER', mid, 'Kupfer allgemein', 0, 10000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now())
+  ON CONFLICT (qr_code) DO NOTHING;
+END $$;
+
+-- -----------------------------------------
+-- 2) Metall gemischt / Schrott - 3 Container
+-- -----------------------------------------
+DO $$
+DECLARE
+  mid text;
+BEGIN
+  SELECT id INTO mid FROM public.materials
+   WHERE code IN ('METALL','SCHROTT','MISCHSCHROTT','METAL_MIX')
+      OR upper(name) LIKE '%SCHROTT%'
+      OR upper(name) LIKE '%METALL%'
+   ORDER BY (code IN ('MISCHSCHROTT','SCHROTT','METALL')) DESC
+   LIMIT 1;
+
+  INSERT INTO public.warehouse_containers
+    (id, location, warehouse_zone, qr_code, material_type, material_id, content_description, current_amount, max_capacity, quantity_unit, status, is_active, is_full, is_blocked, notes, created_at, updated_at)
+  VALUES
+    (gen_random_uuid()::text, 'Lager', 'Zone B', '{"t":"WAREHOUSE_CONTAINER","id":"WH-MET-01"}', 'METALL', mid, 'Metall gemischt / Schrott', 0, 15000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now()),
+    (gen_random_uuid()::text, 'Lager', 'Zone B', '{"t":"WAREHOUSE_CONTAINER","id":"WH-MET-02"}', 'METALL', mid, 'Metall gemischt / Schrott', 0, 15000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now()),
+    (gen_random_uuid()::text, 'Lager', 'Zone B', '{"t":"WAREHOUSE_CONTAINER","id":"WH-MET-03"}', 'METALL', mid, 'Metall gemischt / Schrott', 0, 15000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now())
+  ON CONFLICT (qr_code) DO NOTHING;
+END $$;
+
+-- -----------------------------------------
+-- 3) Aluminium - 2 Container
+-- -----------------------------------------
+DO $$
+DECLARE
+  mid text;
+BEGIN
+  SELECT id INTO mid FROM public.materials
+   WHERE code IN ('ALU','ALUMINIUM')
+      OR upper(name) LIKE '%ALU%'
+      OR upper(name) LIKE '%ALUMIN%'
+   ORDER BY (code='ALUMINIUM') DESC
+   LIMIT 1;
+
+  INSERT INTO public.warehouse_containers
+    (id, location, warehouse_zone, qr_code, material_type, material_id, content_description, current_amount, max_capacity, quantity_unit, status, is_active, is_full, is_blocked, notes, created_at, updated_at)
+  VALUES
+    (gen_random_uuid()::text, 'Lager', 'Zone B', '{"t":"WAREHOUSE_CONTAINER","id":"WH-ALU-01"}', 'ALUMINIUM', mid, 'Aluminium allgemein', 0, 12000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now()),
+    (gen_random_uuid()::text, 'Lager', 'Zone B', '{"t":"WAREHOUSE_CONTAINER","id":"WH-ALU-02"}', 'ALUMINIUM', mid, 'Aluminium allgemein', 0, 12000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now())
+  ON CONFLICT (qr_code) DO NOTHING;
+END $$;
+
+-- -----------------------------------------
+-- 4) Papier / Pappe - 2 Container
+-- -----------------------------------------
+DO $$
+DECLARE
+  mid text;
+BEGIN
+  SELECT id INTO mid FROM public.materials
+   WHERE code IN ('PAPIER','PAPPE','PAPER')
+      OR upper(name) LIKE '%PAPIER%'
+      OR upper(name) LIKE '%PAPPE%'
+   ORDER BY (code='PAPIER') DESC
+   LIMIT 1;
+
+  INSERT INTO public.warehouse_containers
+    (id, location, warehouse_zone, qr_code, material_type, material_id, content_description, current_amount, max_capacity, quantity_unit, status, is_active, is_full, is_blocked, notes, created_at, updated_at)
+  VALUES
+    (gen_random_uuid()::text, 'Lager', 'Zone C', '{"t":"WAREHOUSE_CONTAINER","id":"WH-PAP-01"}', 'PAPIER', mid, 'Papier/Pappe', 0, 8000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now()),
+    (gen_random_uuid()::text, 'Lager', 'Zone C', '{"t":"WAREHOUSE_CONTAINER","id":"WH-PAP-02"}', 'PAPIER', mid, 'Papier/Pappe', 0, 8000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now())
+  ON CONFLICT (qr_code) DO NOTHING;
+END $$;
+
+-- -----------------------------------------
+-- 5) Kunststoff - 2 Container
+-- -----------------------------------------
+DO $$
+DECLARE
+  mid text;
+BEGIN
+  SELECT id INTO mid FROM public.materials
+   WHERE code IN ('KUNSTSTOFF','PLASTIK','PLASTIC')
+      OR upper(name) LIKE '%KUNSTSTOFF%'
+      OR upper(name) LIKE '%PLAST%'
+   ORDER BY (code='KUNSTSTOFF') DESC
+   LIMIT 1;
+
+  INSERT INTO public.warehouse_containers
+    (id, location, warehouse_zone, qr_code, material_type, material_id, content_description, current_amount, max_capacity, quantity_unit, status, is_active, is_full, is_blocked, notes, created_at, updated_at)
+  VALUES
+    (gen_random_uuid()::text, 'Lager', 'Zone C', '{"t":"WAREHOUSE_CONTAINER","id":"WH-PL-01"}', 'KUNSTSTOFF', mid, 'Kunststoff allgemein', 0, 6000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now()),
+    (gen_random_uuid()::text, 'Lager', 'Zone C', '{"t":"WAREHOUSE_CONTAINER","id":"WH-PL-02"}', 'KUNSTSTOFF', mid, 'Kunststoff allgemein', 0, 6000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now())
+  ON CONFLICT (qr_code) DO NOTHING;
+END $$;
+
+-- -----------------------------------------
+-- 6) Holz - 1 Container
+-- -----------------------------------------
+DO $$
+DECLARE
+  mid text;
+BEGIN
+  SELECT id INTO mid FROM public.materials
+   WHERE code IN ('HOLZ','WOOD')
+      OR upper(name) LIKE '%HOLZ%'
+   LIMIT 1;
+
+  INSERT INTO public.warehouse_containers
+    (id, location, warehouse_zone, qr_code, material_type, material_id, content_description, current_amount, max_capacity, quantity_unit, status, is_active, is_full, is_blocked, notes, created_at, updated_at)
+  VALUES
+    (gen_random_uuid()::text, 'Lager', 'Zone D', '{"t":"WAREHOUSE_CONTAINER","id":"WH-WOOD-01"}', 'HOLZ', mid, 'Holz', 0, 8000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now())
+  ON CONFLICT (qr_code) DO NOTHING;
+END $$;
+
+-- -----------------------------------------
+-- 7) Restabfall - 1 Container
+-- -----------------------------------------
+DO $$
+DECLARE
+  mid text;
+BEGIN
+  SELECT id INTO mid FROM public.materials
+   WHERE code IN ('RESTABFALL','REST','RESIDUAL')
+      OR upper(name) LIKE '%REST%'
+   LIMIT 1;
+
+  INSERT INTO public.warehouse_containers
+    (id, location, warehouse_zone, qr_code, material_type, material_id, content_description, current_amount, max_capacity, quantity_unit, status, is_active, is_full, is_blocked, notes, created_at, updated_at)
+  VALUES
+    (gen_random_uuid()::text, 'Lager', 'Zone D', '{"t":"WAREHOUSE_CONTAINER","id":"WH-REST-01"}', 'RESTABFALL', mid, 'Restabfall', 0, 8000, 'kg', 'AT_WAREHOUSE', true, false, false, 'Seed', now(), now())
+  ON CONFLICT (qr_code) DO NOTHING;
+END $$;
+
+COMMIT;

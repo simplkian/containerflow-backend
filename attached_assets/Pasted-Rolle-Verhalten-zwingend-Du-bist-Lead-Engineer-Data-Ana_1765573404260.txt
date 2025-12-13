@@ -1,0 +1,308 @@
+Rolle & Verhalten (zwingend)
+
+Du bist Lead Engineer & Data/Analytics Engineer. Du arbeitest innerhalb des aktuellen Repos und implementierst fehlende Produktionsfunktionen.
+Nicht nur UI-Mockups: alles muss end-to-end funktionieren (DB → API → UI).
+Wenn etwas fehlt, entscheide sinnvoll und dokumentiere Annahmen in README_STATS.md.
+
+Ziel
+
+Implementiere:
+
+Automatische tägliche Aufgaben (Auto-Tasks) für definierte Ständer/Stationen
+
+Aktivitätsanzeige / Audit-Trail mit exakten Zeitstempeln, Akteur, Abteilung, Station/Halle, Material, Box, Statuswechsel
+
+Statistiken/Analytics: Materialmengen, Stationen, Zeiträume, Fahrer/Abteilung, Durchlaufzeiten, Top-Stationen, Trends
+
+Online-only. QR-basiert. Material kommt ausschließlich über Ständer.
+
+A) Daily Auto-Tasks (zwingend, produktionsreif)
+A1. Neue Datenfelder (DB)
+
+Erweitere Datenmodell (Prisma) um:
+
+Stand.dailyFull Boolean @default(false)
+
+Stand.dailyTaskTimeLocal String? (optional, z. B. "06:00" – lokale Zeit; wenn null, Standard 06:00)
+
+Task.source enum TaskSource { DAILY, ADHOC, MANUAL }
+
+Task.scheduledFor DateTime? (Datum, für das Daily-Task gilt)
+
+Task.dedupKey String? @unique (zur Vermeidung von Duplikaten)
+
+Beispiel:
+
+DedupKey: DAILY:${standId}:${YYYY-MM-DD}
+
+A2. Tägliche Erstellung (Server-Scheduler)
+
+Implementiere einen serverseitigen Scheduler (NestJS Schedule oder Cron) der:
+
+jeden Tag um 06:00 lokaler Zeit (Europe/Berlin) läuft
+
+alle Stand mit dailyFull=true lädt
+
+pro Stand genau einen Task für den Tag erstellt (status OPEN)
+
+keine Duplikate: dedupKey/unique constraint + upsert/try-catch
+
+Wichtig:
+
+Daily-Task referenziert den Stand und darüber Material + Station/Hall Kontext
+
+Wenn für den Stand keine Station/Halle eindeutig ist, dokumentiere Annahme:
+
+Entweder Stand ist an Station fix (empfohlen)
+
+Oder es existiert eine StandPlacement Tabelle (wenn Stand physisch wechseln kann)
+
+Regeln:
+
+Daily-Tasks erscheinen jeden Tag als OPEN
+
+Wenn ein Daily-Task nicht erledigt wird, bleibt er offen (oder wird am nächsten Tag automatisch CANCELLED)
+→ Implementiere beides als konfigurierbare Option:
+
+DAILY_TASK_CLOSE_POLICY = KEEP_OPEN | AUTO_CANCEL_PREVIOUS
+
+Standard: AUTO_CANCEL_PREVIOUS (cancelt gestrige offene Daily-Tasks beim Erstellen der neuen)
+
+A3. API-Endpunkte
+
+GET /daily-tasks/today (OPEN daily tasks)
+
+POST /admin/daily-tasks/run (manuell auslösbar; Admin only; für Tests)
+
+PATCH /stands/:id erlaubt dailyFull/dailyTaskTimeLocal zu setzen
+
+A4. UI
+
+In der Task-Übersicht: eigener Filter/Tab „Täglich“ oder Tag „DAILY“
+
+Daily-Task zeigt: Stand-Name, Material, Station/Halle, geplantes Datum
+
+B) Audit / Aktivitätsanzeige (zwingend)
+B1. Event-Store (DB)
+
+Implementiere AuditEvent (oder TaskEvent), wenn noch nicht vorhanden.
+
+Pflichtfelder:
+
+id
+
+timestamp (serverseitig gesetzt)
+
+actorUserId
+
+actorRole
+
+actorDepartmentId (oder Department als String)
+
+entityType (TASK, BOX, STAND, CONTAINER, STATION)
+
+entityId
+
+action (SCAN, TASK_CREATED, STATUS_CHANGED, PLACEMENT_CHANGED, WEIGHT_RECORDED, CONTAINER_ASSIGNED, ADMIN_EDIT, CANCELLED)
+
+beforeJson (JSON)
+
+afterJson (JSON)
+
+metaJson (JSON: stationId, hallId, standId, boxId, materialId, containerId, qrType)
+
+Zwingend:
+
+Jede Task-Transition schreibt ein AuditEvent
+
+Jede Box-Placement-Änderung schreibt ein AuditEvent
+
+Jede Gewichts-Eingabe schreibt ein AuditEvent
+
+Jede Container-Zuweisung schreibt ein AuditEvent
+
+Jede Admin-Änderung schreibt ein AuditEvent
+
+B2. API für Activity Feed
+
+GET /activity?from=...&to=...&materialId=...&stationId=...&hallId=...&userId=...&departmentId=...&action=...
+
+Pagination (cursor oder page/limit)
+
+Sort: newest first
+
+B3. UI Activity
+
+Implementiere „Aktivität“ Screen:
+
+Liste mit:
+
+exakter Zeit (dd.mm.yyyy hh:mm:ss)
+
+Actor (Name) + Abteilung + Rolle
+
+Aktion (z. B. „Abgeholt“, „Abgestellt“, „Verwogen“, „Entsorgt“)
+
+Objekt-Kontext (Material, Station/Halle, Box, Stand, Container)
+
+Filterchips:
+
+Zeitraum (Heute, 7 Tage, 30 Tage, Custom)
+
+Material
+
+Station/Halle
+
+Fahrer/Benutzer
+
+Abteilung
+
+C) Analytics / Statistiken (zwingend)
+C1. KPIs / Reports (MVP-Set)
+
+Implementiere serverseitige Aggregationen (SQL/Prisma):
+
+Materialmenge pro Zeitraum
+
+Summe weightKg über Task.status=DISPOSED
+
+Group by materialId
+
+Filter: from/to, stationId optional, hallId optional
+
+Materialmenge pro Station
+
+Summe weightKg group by stationId + materialId
+
+Materialmenge pro Halle
+
+Summe weightKg group by hallId + materialId
+
+Fahrer-/Abteilungsleistung
+
+Anzahl Tasks abgeschlossen (DISPOSED) + Summe weightKg
+
+group by userId oder departmentId
+
+Zeitraumfilter
+
+Durchlaufzeiten
+
+avg / median Zeit:
+
+OPEN → PICKED_UP
+
+PICKED_UP → DROPPED_OFF
+
+DROPPED_OFF → DISPOSED
+
+group by material oder station
+
+Top-Stationen / Engpässe
+
+Stations mit den meisten offenen Tasks
+
+Tasks, die länger als X Stunden in einem Status hängen
+
+C2. API Endpoints (klar getrennt)
+
+GET /analytics/materials?from&to&groupBy=material|day|week|month
+
+GET /analytics/stations?from&to
+
+GET /analytics/halls?from&to
+
+GET /analytics/users?from&to
+
+GET /analytics/departments?from&to
+
+GET /analytics/lead-times?from&to&by=material|station
+
+GET /analytics/backlog?olderThanHours=...
+
+Hinweis: implementiere effiziente Queries (Indexes):
+
+Task: (status, updatedAt), (materialId, updatedAt), (stationId, updatedAt), (hallId, updatedAt)
+
+AuditEvent: (timestamp), (action), (actorUserId), (departmentId)
+
+C3. UI Analytics Dashboard
+
+Implementiere einen Analytics-Bereich (Admin + optional Supervisor Rollen):
+
+Zeitraum-Auswahl (Date Range Picker)
+
+Karten/KPIs:
+
+Gesamt kg im Zeitraum
+
+Top Material (kg)
+
+Top Station (kg)
+
+offene Tasks gesamt
+
+Tabellen:
+
+Materialübersicht (kg, Anzahl Tasks)
+
+Station × Material Matrix (optional MVP: Station list mit Material breakdown)
+
+Diagramme (einfach):
+
+Zeitreihe kg pro Tag (alle Materialien oder pro Material)
+
+Balken: kg pro Station
+
+Wichtig:
+
+Kein „Fake data“ – nutze echte API
+
+Wenn Chart-Library fehlt: einfache Listen/Tabellen reichen; Hauptsache korrekt.
+
+D) Department/Abteilung (Pflicht für Analyse)
+
+Erweitere User-Modell:
+
+departmentId oder departmentName
+Admin kann Department zuweisen.
+
+API:
+
+/departments CRUD (Admin)
+
+PATCH /users/:id (departmentId)
+
+E) Akzeptanzkriterien (zwingend)
+
+Jeden Tag werden Daily-Tasks zuverlässig erzeugt, keine Duplikate (dedupKey).
+
+Jede Aktion erzeugt AuditEvents, Activity Feed zeigt sekundengenau.
+
+Analytics liefert korrekte Summen nach Zeitraum/Material/Station.
+
+Gewicht ist Pflicht vor DISPOSED.
+
+Performance: Analytics Endpoints unter 2s bei 100k Events (durch Indexe).
+
+F) Lieferumfang / Code
+
+Prisma Migration + Seed (inkl. dailyFull Stands)
+
+Scheduler + Admin Trigger Endpoint
+
+Analytics Services + Controller
+
+Activity Screen + Analytics Screen
+
+README_STATS.md: Datenmodell, Cron, Indizes, Beispielcalls
+
+Keine Pseudocode-Ausgaben. Code vollständig.
+
+Ergänzende Annahmen (wenn notwendig)
+
+Zeitzone: Europe/Berlin
+
+Daily Tasks Standardzeit: 06:00
+
+“Station des Stands” ist fix (wenn nicht vorhanden, implementiere StandPlacement und setze per Admin)

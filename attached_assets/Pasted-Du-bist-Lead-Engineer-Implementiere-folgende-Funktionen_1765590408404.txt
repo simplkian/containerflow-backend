@@ -1,0 +1,77 @@
+Du bist Lead Engineer. Implementiere folgende Funktionen in der bestehenden Automotive-Werk-App. Keine Workarounds über neue Tabs ohne Backend. End-to-end: DB → API → UI → Events.
+
+A) Ständer/Material ist fix (Kernregel)
+
+Ein stand ist der einzige Materialanker. Material wird ausschließlich über stands.material_id bestimmt.
+
+Boxen haben kein eigenes Material.
+
+Beim Scannen eines Ständers muss immer das Material aus DB geladen werden.
+
+B) Box-Stand-Zuordnung (Mapping)
+
+Admin braucht einen Screen „Stellplatz-Zuordnung“:
+
+Dropdown: Halle → Station → Stand (Stand zeigt identifier + Materialname)
+
+Anzeige: aktuell zugewiesene Box (falls vorhanden)
+
+Button: „Box zuweisen“ (per Scan oder Liste Box-001..Box-300)
+
+Button: „Box entfernen“ (setzt boxes.stand_id=NULL)
+
+Regeln:
+
+Pro Stand maximal eine Box. Beim Zuordnen einer neuen Box: AUTO-REPLACE (alte Box wird entfernt, Audit schreiben).
+
+Pickup-Flow: Box wird abgeholt → boxes.stand_id=NULL, status='IN_TRANSIT' + Event/Audit.
+
+Placement-Flow: Stand scannen, dann Box scannen → boxes.stand_id=stand.id, status='AT_STAND' + Event/Audit.
+
+C) Admin: Zeitpläne behalten + manuelle Aufgaben erstellen
+
+Zeitpläne-Tab bleibt (task_schedules).
+
+Ergänze im Admin-Bereich „Neue Aufgabe“ (MANUAL):
+
+Auswahl nur per Dropdown: Halle → Station → Stand (Material wird angezeigt, nicht eingegeben)
+
+optional scheduled_for (Datum/Uhrzeit)
+
+erstellt Task: status='OPEN', source='MANUAL', stand_id, scheduled_for, dedup_key=NULL
+
+schreibt task_events / activity_logs
+
+D) Open Queue: jeder sieht alle Tasks und kann alles
+
+Keine Zuweisung (assigned_to ignorieren).
+
+GET /tasks liefert immer alle Tasks.
+
+Jeder darf claim/release/transition. Claim ist nur Kollisionsschutz (TTL 30min).
+
+Abstellen (IN_TRANSIT→DROPPED_OFF) setzt claimed_by_user_id=NULL.
+
+weight_kg Pflicht bei TAKEN_OVER→WEIGHED.
+
+E) Activity & Stats
+
+Jede Aktion schreibt task_events (und/oder activity_logs) mit sekundengenauem timestamp, Actor, Kontext.
+
+Baue Activity Screen mit Filtern.
+
+Analytics: Materialmenge nach Zeitraum/Station/Halle/User aus DISPOSED tasks (weight_kg).
+
+Naming-Standard für neue Stände
+
+Verwende identifier: ST-<HALL>-<STATION>-<MAT>-<NNN>
+Beispiel: ST-K13-S01-CU-001
+QR: {"t":"STAND","id":"<identifier>"}
+
+Lieferung:
+
+Code vollständig, keine Pseudocode
+
+API Endpoints + UI Screens + Migrations wenn nötig
+
+README_MAPPING.md + README_ADMIN_TASKS.md

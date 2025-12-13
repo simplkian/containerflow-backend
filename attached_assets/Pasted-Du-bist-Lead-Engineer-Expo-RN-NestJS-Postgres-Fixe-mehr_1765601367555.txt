@@ -1,0 +1,201 @@
+Du bist Lead Engineer (Expo RN + NestJS + Postgres). Fixe mehrere Produktionsprobleme. Priorität: Stabilität & UX. Kein Pseudocode. Liefere vollständige Code-Änderungen.
+
+A) Karteneditor: UI-Layout überlappt/verschwindet + Marker löschen (Pflicht)
+A1) Layout-Fix (Top Controls verschwinden)
+
+Problem: Die obere Auswahl (Dropdown/Segment/Buttons) verschwindet unter anderem UI (Überlappung).
+Ursache ist typischerweise fehlende SafeArea, falsches zIndex, absolute positioning oder fehlendes paddingTop.
+
+Fix (zwingend):
+
+Screen Root als SafeAreaView (react-native-safe-area-context).
+
+Top Controls in eigener Sticky-Header-Container:
+
+position: 'relative' (kein absolute)
+
+zIndex: 10
+
+paddingTop: insets.top + 8
+
+backgroundColor gesetzt (damit es nicht transparent über der Map liegt)
+
+Map Bereich nimmt Restfläche:
+
+flex: 1
+
+Wenn Scroll nötig: Top Controls bleiben sichtbar (sticky), Map darunter.
+
+Akzeptanz: Auf iPhone mit Notch und kleinen Androids sind die Top Controls immer sichtbar, nicht überlappt, nicht abgeschnitten.
+
+A2) Marker löschen (Pflicht)
+
+Es muss möglich sein, gesetzte Marker anzuklicken und zu löschen.
+
+Definition:
+
+Löschen entfernt nur die Position (x/y), nicht die Entität.
+
+Bestätigungsdialog: „Marker wirklich löschen? Entität bleibt bestehen.“
+
+UI:
+
+Marker sind tappable.
+
+Tap öffnet BottomSheet/Popover:
+
+„Verschieben“ (setzt Edit-Mode)
+
+„Löschen“ (Confirm)
+
+Zusätzlich: In der linken Liste (Stationen/Hallen) muss bei gesetztem Marker ein „Trash/Delete“-Icon verfügbar sein.
+
+Backend:
+Implementiere Endpoints:
+
+DELETE /admin/map/halls/:id/marker
+
+DELETE /admin/map/stations/:id/marker
+
+DELETE /admin/map/stands/:id/marker (falls Stände gemappt werden)
+
+Server:
+
+entfernt Marker in location_meta / position_meta (x/y null oder Key entfernen)
+
+schreibt activity_logs:
+
+type='MAP', action='MARKER_DELETED', metadata {entityType, entityId, oldX, oldY}
+
+Akzeptanz: Marker kann zuverlässig gelöscht werden und verschwindet sofort in UI (optimistic update + refetch).
+
+B) Aktivitätsanzeige: Navigation/Öffnen aus Einstellungen fixen (Pflicht)
+
+Problem: Aktivität öffnet sich zwar manchmal, aber nicht zuverlässig aus den Einstellungen heraus (Navigation Hook/Route falsch oder Deep Link falsch).
+
+Fix (zwingend):
+
+Stelle sicher, dass es eine Route/Screen-ID für „Activity“ gibt (z. B. AdminActivityScreen).
+
+Einstellungen-Menü navigiert exakt auf diese Route:
+
+navigation.navigate('AdminActivity') (oder korrektes Stack-Nesting)
+
+Prüfe Navigator-Struktur:
+
+Wenn Settings in einem anderen Stack liegt, nutze navigation.getParent() oder CommonActions.navigate korrekt.
+
+Implementiere fallback:
+
+Wenn Screen nicht gefunden: zeige Toast und logge Error (aber kein Crash).
+
+Akzeptanz: „Aktivität“ öffnet immer, egal ob über Admin-Tab oder über Einstellungen.
+
+C) Statistiken: Crash/Restart fixen (Pflicht, höchste Stabilitätspriorität)
+
+Problem: Screen „Statistiken“ verursacht App-Absturz/Neustart (typisch: OOM durch große Datenmengen, endlose Re-render Schleife, nicht virtualisierte Listen/Charts, unhandled promise rejection).
+
+C1) Sofortmaßnahmen (zwingend)
+
+Umhülle Statistik-Screen mit Error Boundary:
+
+Fehler darf nicht App killen, sondern zeigt „Statistik konnte nicht geladen werden“ + Retry.
+
+Implementiere „Loading / Empty / Error“ States sauber.
+
+Verhindere Render-Schleifen:
+
+Keine setState in render
+
+useEffect Dependencies prüfen
+
+Memoization (useMemo/useCallback) für abgeleitete Daten
+
+C2) Backend/Query-Reduktion (zwingend)
+
+Statistiken dürfen nicht „alle Events aller Zeiten“ laden.
+
+API muss paginiert/aggregiert liefern:
+
+GET /analytics/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
+
+Default Range: letzte 7 Tage
+
+Liefere nur aggregierte Kennzahlen:
+
+counts, sums, avg durations
+
+Top-N Listen (z. B. Top 10 Materialien)
+
+Wenn Details gebraucht: separate Endpoint mit Pagination.
+
+C3) UI-Performance (zwingend)
+
+Tabellen/Listen: FlatList virtualisiert, keyExtractor korrekt.
+
+Charts:
+
+keine riesigen Datensätze in Chart-Props
+
+downsampling oder serverseitige Buckets (daily buckets)
+
+Keine Inline-Objekte/Styles in Map/Charts, die Re-renders triggern (StyleSheet + memo).
+
+Akzeptanz: Statistik-Screen lädt stabil, kein Restart, auch bei großem Datenbestand.
+
+D) Allgemeines Logging & QA (Pflicht)
+
+Logging für kritische Screens:
+
+Activity open
+
+Analytics fetch start/end + payload sizes
+
+Map marker ops (set/move/delete)
+
+Baue einen „Dev Debug Mode“ Flag (nur dev):
+
+zeigt Payload sizes, Render counts (optional)
+
+Teste auf:
+
+iPhone SE / kleines Android
+
+iPhone Notch
+
+langsame Verbindung
+
+Deliverables
+
+Karteneditor Layout Fix + Marker Delete (UI+API+Audit)
+
+Activity Navigation Fix (Settings → Activity)
+
+Statistics Crash Fix (ErrorBoundary + Aggregation API + UI perf)
+
+README_FIXES.md mit kurzer Beschreibung der Änderungen
+
+Kein Pseudocode. Vollständige Implementierung.
+
+Wenn du möchtest, kann ich dir als Nachsatz noch ein kurzes SQL geben, um Statistik-Endpunkte performant zu machen (Indexes auf task_events.timestamp, tasks.status, tasks.material_id/stand_id, etc.). Das ist oft der entscheidende Punkt, damit Analytics nicht mehr crasht.
+
+wenn ja bitte
+
+Perfekt. Hier ist das konkrete, produktionsreife SQL-Paket, das du sofort ausführen kannst, um die Statistik-Crashes, langsamen Queries und App-Neustarts zu beheben.
+Das ist exakt auf dein Schema (tasks, task_events, materials, stands, stations, warehouse_containers) zugeschnitten.
+
+🔴 ZIEL
+
+Statistiken dürfen nicht mehr die App crashen
+
+Analytics müssen schnell & aggregiert sein
+
+Grundlage für:
+
+Fahreranalyse
+
+Materialstatistiken
+
+Stations-/Stand-Auswertungen
+
+Zeitreihen (7/30/90 Tage)
