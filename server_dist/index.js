@@ -926,13 +926,33 @@ var TASK_TYPE_LABELS = {
 // server/db.ts
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import * as fs from "fs";
+import * as path from "path";
 var { Pool } = pg;
-if (!process.env.DATABASE_URL) {
+function loadEnvFromFile() {
+  const envPath = path.resolve(process.cwd(), ".env");
+  if (!fs.existsSync(envPath)) return;
+  try {
+    const content = fs.readFileSync(envPath, "utf-8");
+    content.split(/\r?\n/).forEach((line) => {
+      const match = line.match(/^\s*([^#=\s]+)\s*=\s*(.*)\s*$/);
+      if (!match) return;
+      const [, key, rawValue] = match;
+      if (process.env[key]) return;
+      const value = rawValue.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
+      process.env[key] = value;
+    });
+  } catch (error) {
+    console.warn("Failed to load .env file", error);
+  }
+}
+loadEnvFromFile();
+var databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
   throw new Error(
     "DATABASE_URL must be set. For Supabase, copy the connection string from your Supabase Dashboard \u2192 Settings \u2192 Database \u2192 Connection String (URI format)."
   );
 }
-var databaseUrl = process.env.DATABASE_URL;
 var isSupabase = databaseUrl.includes("supabase") || databaseUrl.includes(":6543");
 var poolConfig = {
   connectionString: databaseUrl,
@@ -1565,31 +1585,23 @@ async function generateFlexibleScheduledTasks() {
   }
 }
 async function registerRoutes(app2) {
-  app2.use("/api", (req, res, next) => {
-    const start = Date.now();
-    const requestId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    res.setHeader("X-Request-Id", requestId);
-    res.on("finish", () => {
-      const duration = Date.now() - start;
-      const logMessage = `${req.method} ${req.path} ${res.statusCode} in ${duration}ms`;
-      const responseBody = res._logBody;
-      const bodySnippet = responseBody ? JSON.stringify(responseBody).substring(0, 100) + (JSON.stringify(responseBody).length > 100 ? "\u2026" : "") : "";
-      console.log(`${logMessage} :: ${bodySnippet}`);
-    });
-    next();
-  });
   app2.get("/api/debug/ping", (req, res) => {
     res.json({
       pong: true,
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       env: {
         nodeEnv: process.env.NODE_ENV,
-        hasDbUrl: !!process.env.DATABASE_URL
+        hasDbUrl: !!process.env.DATABASE_URL,
+        requestId: req.requestId
       }
     });
   });
-  app2.head("/api/health", (req, res) => {
-    res.status(200).end();
+  app2.head("/api/health", async (_req, res) => {
+    const dbHealth = await checkDatabaseHealth();
+    if (dbHealth.connected) {
+      return res.status(200).end();
+    }
+    return res.status(503).end();
   });
   app2.get("/api/health", async (req, res) => {
     try {
@@ -2049,8 +2061,71 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/admin/tasks", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { title, standId, description, priority, scheduledFor } = req.body;
+      const { title, standId, description, priority, scheduledFor, hallId, stationId } = req.body;
       const authUser = req.authUser;
+      const isAutomotivePayload = !!(hallId || stationId);
+      if (isAutomotivePayload) {
+        if (!hallId || !stationId || !standId) {
+          return res.status(400).json({ error: "hallId, stationId, and standId are required" });
+        }
+        const [station] = await db.select().from(stations).where(eq2(stations.id, stationId));
+        if (!station) {
+          return res.status(404).json({ error: "Station not found" });
+        }
+        if (station.hallId !== hallId) {
+          return res.status(400).json({ error: "Station does not belong to the specified hall" });
+        }
+        const [stand2] = await db.select().from(stands).where(eq2(stands.id, standId));
+        if (!stand2) {
+          return res.status(404).json({ error: "Stand not found" });
+        }
+        if (stand2.stationId !== stationId) {
+          return res.status(400).json({ error: "Stand does not belong to the specified station" });
+        }
+        if (!stand2.isActive) {
+          return res.status(400).json({ error: "Stand is not active" });
+        }
+        const [existingOpenTask] = await db.select().from(tasks).where(and2(eq2(tasks.standId, standId), eq2(tasks.status, "OPEN")));
+        if (existingOpenTask) {
+          console.log(
+            `[ManualTask] Warning: Creating new task for stand ${standId} which already has an OPEN task ${existingOpenTask.id}`
+          );
+        }
+        const parsedDate = scheduledFor ? new Date(scheduledFor) : null;
+        if (scheduledFor && (!parsedDate || isNaN(parsedDate.getTime()))) {
+          return res.status(400).json({ error: "Invalid scheduledFor date format" });
+        }
+        const [newTask2] = await db.insert(tasks).values({
+          title: title || `Manuelle Aufgabe - Stand ${stand2.identifier}`,
+          description: description ?? null,
+          status: "OPEN",
+          source: "MANUAL",
+          taskType: "AUTOMOTIVE",
+          standId,
+          materialType: stand2.materialId,
+          scheduledFor: parsedDate,
+          dedupKey: null,
+          scheduleId: null,
+          priority: priority || "normal"
+        }).returning();
+        await createAuditEvent({
+          taskId: newTask2.id,
+          actorUserId: authUser?.id,
+          action: "TASK_CREATED",
+          entityType: "task",
+          entityId: newTask2.id,
+          afterData: newTask2,
+          metaJson: {
+            hallId,
+            stationId,
+            standId,
+            materialId: stand2.materialId || void 0,
+            source: "MANUAL"
+          }
+        });
+        console.log(`[Admin] Manual task created: ${newTask2.id} for stand ${stand2.identifier}`);
+        return res.status(201).json(newTask2);
+      }
       if (!title || !standId) {
         return res.status(400).json({ error: "Title and standId are required" });
       }
@@ -5896,74 +5971,6 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Failed to fetch stands" });
     }
   });
-  app2.post("/api/admin/tasks", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { hallId, stationId, standId, scheduledFor } = req.body;
-      const authUser = req.authUser;
-      if (!hallId || !stationId || !standId) {
-        return res.status(400).json({ error: "hallId, stationId, and standId are required" });
-      }
-      const [station] = await db.select().from(stations).where(eq2(stations.id, stationId));
-      if (!station) {
-        return res.status(404).json({ error: "Station not found" });
-      }
-      if (station.hallId !== hallId) {
-        return res.status(400).json({ error: "Station does not belong to the specified hall" });
-      }
-      const [stand] = await db.select().from(stands).where(eq2(stands.id, standId));
-      if (!stand) {
-        return res.status(404).json({ error: "Stand not found" });
-      }
-      if (stand.stationId !== stationId) {
-        return res.status(400).json({ error: "Stand does not belong to the specified station" });
-      }
-      if (!stand.isActive) {
-        return res.status(400).json({ error: "Stand is not active" });
-      }
-      const [existingOpenTask] = await db.select().from(tasks).where(
-        and2(
-          eq2(tasks.standId, standId),
-          eq2(tasks.status, "OPEN")
-        )
-      );
-      if (existingOpenTask) {
-        console.log(`[ManualTask] Warning: Creating new task for stand ${standId} which already has an OPEN task ${existingOpenTask.id}`);
-      }
-      const [newTask] = await db.insert(tasks).values({
-        title: `Manuelle Aufgabe - Stand ${stand.identifier}`,
-        description: null,
-        status: "OPEN",
-        source: "MANUAL",
-        taskType: "AUTOMOTIVE",
-        standId,
-        materialType: stand.materialId,
-        scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
-        dedupKey: null,
-        scheduleId: null,
-        priority: "normal"
-      }).returning();
-      await createAuditEvent({
-        taskId: newTask.id,
-        actorUserId: authUser?.id,
-        action: "TASK_CREATED",
-        entityType: "task",
-        entityId: newTask.id,
-        afterData: newTask,
-        metaJson: {
-          hallId,
-          stationId,
-          standId,
-          materialId: stand.materialId || void 0,
-          source: "MANUAL"
-        }
-      });
-      console.log(`[Admin] Manual task created: ${newTask.id} for stand ${stand.identifier}`);
-      res.status(201).json(newTask);
-    } catch (error) {
-      console.error("[Admin] Failed to create manual task:", error);
-      res.status(500).json({ error: "Failed to create task" });
-    }
-  });
   app2.post("/api/seed/kaiserslautern", requireAuth, requireAdmin, async (req, res) => {
     try {
       let parseStandIdentifiers2 = function(label) {
@@ -6568,13 +6575,15 @@ async function registerRoutes(app2) {
 }
 
 // server/index.ts
-import * as fs from "fs";
-import * as path from "path";
+import * as fs2 from "fs";
+import * as path2 from "path";
+import { randomUUID } from "crypto";
 var app = express();
 var log = console.log;
 function setupCors(app2) {
   app2.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
+    const origin = req.header("origin") || "*";
+    res.header("Access-Control-Allow-Origin", origin);
     res.header(
       "Access-Control-Allow-Methods",
       "GET, POST, PUT, DELETE, OPTIONS, PATCH"
@@ -6583,6 +6592,8 @@ function setupCors(app2) {
       "Access-Control-Allow-Headers",
       "Content-Type, Authorization, x-user-id, x-replit-user-id, x-replit-user-name, x-replit-user-roles"
     );
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Vary", "Origin");
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
     }
@@ -6601,18 +6612,33 @@ function setupBodyParsing(app2) {
 }
 function setupRequestLogging(app2) {
   app2.use((req, res, next) => {
+    const requestId = req.header("x-request-id") || randomUUID();
+    req.requestId = requestId;
+    res.setHeader("x-request-id", requestId);
     const start = Date.now();
-    const path2 = req.originalUrl || req.path;
+    const path3 = req.originalUrl || req.path;
     let capturedJsonResponse = void 0;
     const originalResJson = res.json;
     res.json = function(bodyJson, ...args) {
       capturedJsonResponse = bodyJson;
+      if (res.statusCode >= 400 && bodyJson && typeof bodyJson === "object" && !Array.isArray(bodyJson)) {
+        const body = bodyJson;
+        if (!body.requestId) {
+          body.requestId = requestId;
+        }
+        if (!body.error && typeof body.message === "string") {
+          body.error = body.message;
+        }
+        if (!("details" in body)) {
+          body.details = typeof body.error === "string" ? body.error : void 0;
+        }
+      }
       return originalResJson.apply(res, [bodyJson, ...args]);
     };
     res.on("finish", () => {
-      if (!path2.startsWith("/api")) return;
+      if (!path3.startsWith("/api")) return;
       const duration = Date.now() - start;
-      let logLine = `${req.method} ${path2} ${res.statusCode} in ${duration}ms`;
+      let logLine = `[${requestId}] ${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
@@ -6626,8 +6652,8 @@ function setupRequestLogging(app2) {
 }
 function getAppName() {
   try {
-    const appJsonPath = path.resolve(process.cwd(), "app.json");
-    const appJsonContent = fs.readFileSync(appJsonPath, "utf-8");
+    const appJsonPath = path2.resolve(process.cwd(), "app.json");
+    const appJsonContent = fs2.readFileSync(appJsonPath, "utf-8");
     const appJson = JSON.parse(appJsonContent);
     return appJson.expo?.name || "App Landing Page";
   } catch {
@@ -6635,19 +6661,19 @@ function getAppName() {
   }
 }
 function serveExpoManifest(platform, res) {
-  const manifestPath = path.resolve(
+  const manifestPath = path2.resolve(
     process.cwd(),
     "static-build",
     platform,
     "manifest.json"
   );
-  if (!fs.existsSync(manifestPath)) {
+  if (!fs2.existsSync(manifestPath)) {
     return res.status(404).json({ error: `Manifest not found for platform: ${platform}` });
   }
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
-  const manifest = fs.readFileSync(manifestPath, "utf-8");
+  const manifest = fs2.readFileSync(manifestPath, "utf-8");
   res.send(manifest);
 }
 function serveLandingPage({
@@ -6669,13 +6695,13 @@ function serveLandingPage({
   res.status(200).send(html);
 }
 function configureExpoAndLanding(app2) {
-  const templatePath = path.resolve(
+  const templatePath = path2.resolve(
     process.cwd(),
     "server",
     "templates",
     "landing-page.html"
   );
-  const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
+  const landingPageTemplate = fs2.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
   log("Serving static Expo files with dynamic manifest routing");
   app2.use((req, res, next) => {
@@ -6699,17 +6725,23 @@ function configureExpoAndLanding(app2) {
     }
     next();
   });
-  app2.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
-  app2.use(express.static(path.resolve(process.cwd(), "static-build")));
+  app2.use("/assets", express.static(path2.resolve(process.cwd(), "assets")));
+  app2.use(express.static(path2.resolve(process.cwd(), "static-build")));
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 function setupErrorHandler(app2) {
-  app2.use((err, _req, res, _next) => {
+  app2.use((err, req, res, _next) => {
     const error = err;
     const status = error.status || error.statusCode || 500;
     const message = error.message || "Internal Server Error";
-    res.status(status).json({ message });
-    throw err;
+    const requestId = req.requestId || randomUUID();
+    res.setHeader("x-request-id", requestId);
+    console.error(`[${requestId}]`, err);
+    res.status(status).json({
+      error: message,
+      details: process.env.NODE_ENV === "development" ? error.stack : void 0,
+      requestId
+    });
   });
 }
 (async () => {
