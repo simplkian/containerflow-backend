@@ -67,12 +67,8 @@
     "@types/node": "24.10.0",
     "@types/react": "~19.1.0",
     "babel-plugin-module-resolver": "^5.0.2",
-<<<<<<< Updated upstream
     "drizzle-kit": "^0.31.8",
     "esbuild": "^0.25.12",
-=======
-    "drizzle-kit": "^0.18.1",
->>>>>>> Stashed changes
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "eslint-config-prettier": "^10.1.8",
