@@ -1,0 +1,187 @@
+KONTEXT
+=======
+
+Das Projekt heißt aktuell "ContainerFlow" und ist eine Logistik-App mit:
+
+- React Native + Expo (SDK 54) als Frontend (Mobile + Web)
+- Node.js + Express als Backend (API unter /api)
+- PostgreSQL + Drizzle ORM als Datenbank
+- Zentrale Schema-Definition in shared/schema.ts
+- Task-/Container-/Scan-/Activity-Log-Logik ist bereits implementiert
+- QR-Codes müssen STABIL und serverseitig gespeichert bleiben
+
+Du hast mir bereits eine Systembeschreibung ausgegeben, u.a. mit:
+
+- TaskStatus, ScanContext, ActivityLogType, UserRole enums
+- Tabellen: users, customers, customerContainers, warehouseContainers, tasks, scanEvents, activityLogs, fillHistory
+- QR-Code-Format: {type}-{containerId}, QR nur im Backend generiert, Frontend liest nur
+
+Wichtig: Ich möchte Supabase ausschließlich als PostgreSQL-Host verwenden.
+Kein direkter Supabase-Zugriff aus der Expo-App, kein Supabase-JS-Client im Frontend.
+
+Ich habe in Replit bereits folgendes gesetzt:
+
+- DATABASE_URL = (PostgreSQL Connection String aus Supabase, als Secret)
+- REPLIT_DEV_DOMAIN wird von Replit gesetzt
+- EXPO_PUBLIC_DOMAIN wird beim Start bereits auf "$REPLIT_DEV_DOMAIN:5000" gesetzt
+
+Beim Start läuft:
+
+- `npm run server:dev` → Express auf Port 5000
+- `npm run expo:dev` → Expo mit
+  EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN
+  REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN
+  EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000
+
+AUFGABE
+=======
+
+Bitte konfiguriere das gesamte Projekt so, dass:
+
+1. Die PostgreSQL-Datenbank über Supabase (DATABASE_URL) angebunden ist.
+2. Drizzle ORM korrekt auf diese Supabase-Datenbank zugreift.
+3. Migrations und Schema-Sync sauber laufen.
+4. Die Expo-App über EXPO_PUBLIC_DOMAIN zuverlässig mit dem Backend spricht.
+5. Die QR-Code-Logik stabil bleibt und weiterhin nur serverseitig passiert.
+
+Bitte halte dich an folgende Leitplanken:
+
+- KEINE Geschäftslogik (Business-Logik) verändern:
+  - Task-Status-Lifecycle (PLANNED → COMPLETED/CANCELLED) muss erhalten bleiben.
+  - Scan-Logik (ScanContext) und Activity-Log-Typen nicht ändern, höchstens bugfixen.
+- KEINE direkten Supabase-Aufrufe aus der Expo-App.
+- KEIN service_role Key im Frontend, KEINE DB-Passwörter im Client.
+- Nur das Backend redet mit der Datenbank (über Drizzle + DATABASE_URL).
+
+KONKRETE TO-DOS
+===============
+
+1) DATABASE_URL / Drizzle-Konfiguration
+
+- Stelle sicher, dass das Drizzle-Setup (z.B. in server/db.ts oder ähnlicher Datei) die Verbindung so aufbaut:
+
+  - Nutzt `process.env.DATABASE_URL`
+  - Verwendet den `pg`-Treiber (z. B. `import { Pool } from 'pg'`), verbunden mit der Supabase-URL
+  - Übergibt diese Connection an Drizzle (`drizzle(pool, {...})` oder die vorhandene Struktur)
+
+- Entferne oder bereinige alle alten Verbindungen, die auf eine lokale Replit-Postgres-Instanz oder andere DB-Backends zeigen.
+- Stelle sicher, dass keine Hardcodes von Host/Port/User/Passwort im Code sind.
+  Alles soll über die Umgebungsvariable `DATABASE_URL` laufen.
+
+2) Supabase-/Postgres-Bootstrap und Migrationen
+
+- Falls noch nicht vorhanden, lege ein SQL-Bootstrap-Skript für Supabase an (z. B. `supabase-bootstrap.sql`), das:
+  - benötigte Extensions (z. B. uuid-ossp, pgcrypto) aktiviert, falls nötig,
+  - Enums und spezielle DB-Typen anlegt, die Drizzle erwartet.
+
+- Prüfe, welche Drizzle-Skripte verfügbar sind (z. B. in package.json):
+  - `npm run db:push`
+  - `npm run db:migrate`
+  - oder ähnliches
+
+- Passe die Scripts in der package.json so an, dass:
+  - sie auf `DATABASE_URL` aufsetzen
+  - migrations/ bzw. shared/schema.ts korrekt verwenden
+
+- Sorge dafür, dass ein einmaliger Lauf von z. B. `npm run db:push` oder `npm run db:migrate` die komplette Tabellenstruktur in Supabase erzeugt, kompatibel zur bestehenden Drizzle-Schema-Definition (`shared/schema.ts`).
+
+3) Healthcheck-Route für Backend/Supabase
+
+- Implementiere eine einfache Health-Route im Backend, z. B.:
+
+  - GET `/api/health`
+
+- Diese Route soll:
+  - mind. eine einfache DB-Abfrage via Drizzle machen (z. B. `select 1` oder einen count/limit auf eine Tabelle, z. B. users),
+  - und ein JSON zurückgeben wie:
+
+    ```json
+    {
+      "status": "ok",
+      "database": "connected"
+    }
+    ```
+
+- So kann ich im Browser testen, ob:
+  - das Backend läuft, und
+  - die Supabase-Datenbank erreichbar ist.
+
+4) EXPO_PUBLIC_DOMAIN und API-Client in der App
+
+- Die Start-Skripte setzen bereits:
+  `EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN:5000`
+
+- Stelle bitte sicher, dass der API-Client der Expo-App (z. B. in client/src/api/client.ts oder ähnlicher Datei):
+
+  - `process.env.EXPO_PUBLIC_DOMAIN` verwendet
+  - und daraus eine vollständige HTTPS-URL baut, z. B.:
+
+    ```ts
+    const API_BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`;
+    ```
+
+- Exporte eine Funktion oder ein Objekt, das alle API-Calls darüber ausführt:
+  - z. B. `getDriverTasks`, `getTaskById`, `scan`, `getActivities` etc.
+
+- Entferne jegliche Hardcodes wie `http://localhost:5000` oder alte URLs.
+  Alles muss über `process.env.EXPO_PUBLIC_DOMAIN` gehen.
+
+5) QR-Code-Logik beibehalten und überprüfen
+
+- Prüfe den Code für die QR-Code-Generierung und -Auswertung:
+
+  - QR-Codes werden ausschließlich im Backend generiert.
+  - Sie haben das Format `{type}-{containerId}` (z. B. `warehouse-WH-001`, `customer-C-001`).
+  - Sie werden in der Datenbank gespeichert (z. B. in warehouseContainers / customerContainers / ähnlichen Tabellen).
+  - Es gibt Look-up-Endpunkte in der Form:
+    - `/api/containers/warehouse/qr/:qrCode`
+    - `/api/containers/customer/qr/:qrCode`
+
+- Stelle sicher:
+  - Dass QR-Codes beim Anlegen eines Containers einmal generiert und in der DB persistiert werden.
+  - Dass KEINE Stelle im Code bei jedem Start neue QR-Codes erzeugt oder vorhandene überschreibt.
+  - Dass Admin-Regeneration (z. B. `POST /api/containers/{type}/{id}/regenerate-qr`) nur auf explizite Aktion geht und die Änderung im activityLogs protokolliert wird.
+
+6) Tests / Manuelle Verifikation
+
+- Sorge dafür, dass ich nach deiner Umstellung folgende Tests durchführen kann:
+
+  1) **Healthcheck:**
+     - Im Browser: `https://<REPLIT_DEV_DOMAIN>:5000/api/health`
+     - Erwartung: JSON mit `"status": "ok", "database": "connected"` oder ähnlicher klarer Output.
+
+  2) **Einen einfachen Container/Test-Datensatz anlegen** (über bestehenden Admin-Endpunkt oder ein kleines Seed-Skript) und prüfen, ob er in Supabase in der entsprechenden Tabelle sichtbar ist.
+
+  3) **Expo-App starten (QR-Code aus Replit-Log scannen):**
+     - Eine Driver-Task-Liste laden
+     - Task-Details öffnen
+     - Scan-Flow nutzen
+     - Sicherstellen, dass alle Requests an:
+       `https://<REPLIT_DEV_DOMAIN>:5000/api/...`
+       gehen und korrekt beantwortet werden.
+
+7) Aufräumen & Kommentare
+
+- Entferne veralteten Code, der:
+  - auf eine andere Datenbank zeigt,
+  - alte ENV-Namen benutzt,
+  - oder Supabase fälschlich direkt im Client anspricht.
+
+- Füge an Schlüsselstellen kurze Kommentare ein, z. B.:
+  - In der DB-Konfiguration:
+    - Hinweis, dass `DATABASE_URL` von Supabase stammt.
+  - In der API-Client-Konfiguration:
+    - Hinweis, dass `EXPO_PUBLIC_DOMAIN` von Replit gesetzt wird und `https://<domain>:5000` repräsentiert.
+
+ZIELBILD
+========
+
+Am Ende möchte ich:
+
+- Eine funktionierende Verbindung zur Supabase-PostgreSQL-Datenbank über `DATABASE_URL` (Drizzle ORM).
+- Eine /api/health Route, die "ok" zurückgibt und bestätigt, dass die DB erreichbar ist.
+- Eine Expo-App, die ihre Anfragen über `https://${process.env.EXPO_PUBLIC_DOMAIN}/api` ans Backend sendet.
+- Weiterhin stabile, unveränderte QR-Codes (nur bei expliziter Admin-Regeneration geändert).
+- Keine direkten Supabase-Zugriffe aus der Expo-App.
+
+Bitte setze all das robust, sauber und best-practices-konform um.

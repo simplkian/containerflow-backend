@@ -1,0 +1,364 @@
+PROJEKT-KONTEXT
+================
+
+Wir haben eine Logistik-App für Container mit folgenden Features:
+- Rollen: ADMIN und DRIVER
+- Container mit stabilem QR-Code (einmal ausgedruckt, darf sich nie automatisch ändern)
+- Tasks/Aufträge (Admin erstellt, Fahrer führt aus)
+- QR-Scan-Flows:
+  - Info-Scan im Lager
+  - Scan beim Kunden → Auftrag annehmen
+  - Scan im Lager → Auftrag abschließen, Gewicht setzen
+- Activity-Log (Timeline der Ereignisse)
+- Expo React-Native-App (Android & iOS) für die Nutzung durch Fahrer (und optional Admin).
+
+Du sollst jetzt ALLES auf eine professionelle Architektur bringen und zusammenführen:
+
+ARCHITEKTURZIEL
+===============
+
+(1) Supabase als PostgreSQL-Datenbank
+(2) Node/Express-Backend als zentrale API
+(3) Expo React-Native-App als Mobile-Client (Android + iOS)
+    - Die App spricht NICHT direkt mit Supabase, sondern nur mit der API.
+
+Du sollst:
+- das Datenmodell in Supabase sauber anlegen (oder migrieren),
+- im Backend Supabase statt Replit DB nutzen,
+- alle API-Routen implementieren,
+- die Expo-App mit der API verbinden,
+- meine Code-Schnipsel integrieren, verbessern, aufräumen.
+
+WICHTIG: QR-Codes sind stabil
+-----------------------------
+- Jeder Container hat ein Feld `qr_code_value`, das EINMAL beim Anlegen generiert wird.
+- Dieser Wert wird in der Supabase-DB gespeichert.
+- Er darf sich niemals ändern, außer bei einer expliziten Admin-Aktion „QR-Code neu generieren“.
+- ALLE Scans identifizieren Container über dieses Feld.
+
+
+1) SUPABASE-DATENMODELL
+=======================
+
+Nutze Supabase mit diesen ENV-Variablen im Backend (NICHT im Frontend):
+
+Ich trage die echten Werte selbst in der .env / im Secret-Manager ein, du sollst sie NUR über process.env lesen:
+
+- SUPABASE_URL = "<<SUPABASE_URL>>"
+- SUPABASE_SERVICE_ROLE_KEY = "<<SUPABASE_SERVICE_ROLE_KEY>>"
+
+(optional, falls benötigt):
+- DB_PASSWORD = "<<DB_PASSWORD>>"
+
+BITTE: Diese Werte nicht hardcoden, nur über `process.env` verwenden.
+
+Erzeuge (oder migriere) in Supabase die folgenden Typen und Tabellen.
+Passe ggf. Namen/Konventionen an, aber behalte die Struktur bei:
+
+SQL (bitte im Supabase-SQL-Editor ausführen oder als Migration einbauen):
+
+----------------------------------------------------
+-- ENUM-TYPEN (optional, kannst auch text nutzen)
+----------------------------------------------------
+create type user_role as enum ('ADMIN', 'DRIVER');
+create type container_status as enum ('AT_WAREHOUSE', 'AT_CUSTOMER', 'IN_TRANSIT', 'OUT_OF_SERVICE');
+create type task_status as enum ('PLANNED', 'ASSIGNED', 'ACCEPTED', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'CANCELLED');
+create type scan_context as enum ('WAREHOUSE_INFO', 'TASK_ACCEPT_AT_CUSTOMER', 'TASK_COMPLETE_AT_WAREHOUSE', 'CUSTOMER_INFO');
+
+----------------------------------------------------
+-- USERS
+----------------------------------------------------
+create table if not exists users (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text unique,
+  role user_role not null default 'DRIVER',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+----------------------------------------------------
+-- CUSTOMERS (optional, aber sinnvoll)
+----------------------------------------------------
+create table if not exists customers (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  address text,
+  contact_info text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+----------------------------------------------------
+-- CONTAINERS
+----------------------------------------------------
+create table if not exists containers (
+  id uuid primary key default gen_random_uuid(),
+  qr_code_value text not null unique,
+  label text not null,
+  content_description text,
+  quantity numeric not null default 0,
+  quantity_unit text not null default 'kg',
+  status container_status not null default 'AT_WAREHOUSE',
+  warehouse_location text,
+  customer_location text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+----------------------------------------------------
+-- TASKS / JOBS
+----------------------------------------------------
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  description text,
+  container_id uuid not null references containers(id) on delete restrict,
+  customer_id uuid references customers(id) on delete set null,
+  created_by_user_id uuid not null references users(id) on delete restrict,
+  assigned_to_user_id uuid references users(id) on delete set null,
+  planned_execution_time timestamptz,
+  planned_quantity numeric,
+  planned_quantity_unit text,
+  status task_status not null default 'PLANNED',
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  assigned_at timestamptz,
+  accepted_at timestamptz,
+  picked_up_at timestamptz,
+  delivered_at timestamptz,
+  completed_at timestamptz,
+  cancelled_at timestamptz
+);
+
+----------------------------------------------------
+-- SCAN EVENTS
+----------------------------------------------------
+create table if not exists scan_events (
+  id uuid primary key default gen_random_uuid(),
+  container_id uuid not null references containers(id) on delete cascade,
+  task_id uuid references tasks(id) on delete set null,
+  scanned_by_user_id uuid not null references users(id) on delete restrict,
+  scan_context scan_context not null,
+  location_type text,
+  location_details text,
+  extra_data jsonb,
+  scanned_at timestamptz not null default now()
+);
+
+----------------------------------------------------
+-- ACTIVITY LOG
+----------------------------------------------------
+create table if not exists activity_log (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid references tasks(id) on delete set null,
+  user_id uuid references users(id) on delete set null,
+  container_id uuid references containers(id) on delete set null,
+  type text not null,
+  message text not null,
+  timestamp timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+
+2) BACKEND – SUPABASE-CLIENT UND EXPRESS-SERVER
+===============================================
+
+Erstelle einen Backend-Ordner, z. B. `backend/`, mit folgendem Aufbau (du darfst ihn verfeinern):
+
+- backend/src/supabaseClient.ts
+- backend/src/server.ts
+- backend/src/routes/containers.ts
+- backend/src/routes/tasks.ts
+- backend/src/routes/scan.ts
+- backend/src/routes/activities.ts
+
+NUTZE MEINE SCHNIPSEL ALS BASIS, RÄUME SIE AUF UND INTEGRIERE SIE:
+
+supabaseClient.ts (bitte korrekt mit ENV):
+
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+export const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+server.ts – Express-Server, CORS, JSON, einfache Fake-Auth (kann später durch echte Auth ersetzt werden):
+
+import express from 'express';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+import containersRouter from './routes/containers';
+import tasksRouter from './routes/tasks';
+import scanRouter from './routes/scan';
+import activitiesRouter from './routes/activities';
+
+const app = express();
+
+app.use(cors());
+app.use(bodyParser.json());
+
+// einfache Fake-Auth Middleware (später JWT/Session)
+app.use((req, res, next) => {
+  const role = (req.headers['x-user-role'] as string) || 'DRIVER';
+  const userId = (req.headers['x-user-id'] as string) || '00000000-0000-0000-0000-000000000000';
+  (req as any).currentUser = { id: userId, role };
+  next();
+});
+
+app.use('/api/containers', containersRouter);
+app.use('/api/tasks', tasksRouter);
+app.use('/api/scan', scanRouter);
+app.use('/api/activities', activitiesRouter);
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`API listening on port ${port}`);
+});
+
+IMPLEMENTIERE DIE ROUTEN anhand meiner Beispiele,
+aber bitte vollständig, robust und aufgeräumt:
+
+- /api/containers:
+  - GET /       → Liste aller Container
+  - GET /:id    → Container-Details
+  - POST /      → Container anlegen (Admin)
+    - generiere qr_code_value (UUID oder ähnlich, stabil)
+  - POST /:id/reset → Container leeren (Admin), ActivityLog-Eintrag
+
+- /api/tasks:
+  - GET /driver → Tasks für aktuellen Fahrer (assigned_to_user_id = currentUser.id)
+  - GET /:id    → Task-Details inkl. Container, Kunde
+  - POST /      → Neuer Task (Admin)
+
+- /api/scan:
+  - POST /      → zentraler Scan-Endpoint mit Body:
+    { qrCodeValue, scanContext, taskId?, measuredWeight?, measuredWeightUnit? }
+  - Logik:
+    - Container via qr_code_value suchen
+    - optional Task prüfen
+    - ScanEvent anlegen
+    - je nach scanContext:
+      - WAREHOUSE_INFO → nur Containerdaten zurückgeben
+      - TASK_ACCEPT_AT_CUSTOMER → Task.status → ACCEPTED, accepted_at setzen, ActivityLog-Eintrag
+      - TASK_COMPLETE_AT_WAREHOUSE → Container-Status/Menge anpassen, Task.status → COMPLETED, delivered_at & completed_at setzen, ActivityLog-Einträge
+
+- /api/activities:
+  - GET /           → globale Liste
+  - GET /tasks/:id  → Aktivitäten zu einem Task
+
+Bitte:
+- saubere Fehlercodes (400, 403, 404, 409, 500)
+- gutes Error-Handling
+- Admin/Driver-Rollen prüfen
+- QR-Code-Logik NICHT brechen (qr_code_value nie ungewollt ändern)
+
+Nutze meine Code-Schnipsel (containers.ts, tasks.ts, scan.ts), aber refactore sie so, dass alles zusammen passt, typisiert ist und stabil läuft.
+
+
+3) EXPO REACT-NATIVE APP (ANDROID + IOS)
+========================================
+
+Im Ordner `mobile/` soll ein Expo-Projekt liegen (oder das bestehende Expo-Projekt angepasst werden), das mit der obigen API kommuniziert.
+
+Konfiguration:
+
+- `mobile/src/config/api.ts`:
+  export const API_BASE_URL = "<<DEINE_BACKEND_URL>>/api";
+
+- `mobile/src/api/client.ts`:
+  - zentraler Fetch-Client mit:
+    - `API_BASE_URL`
+    - Standard-Headern
+    - Demo-Auth-Headern `x-user-role` und `x-user-id` (später durch echte Auth ersetzbar)
+
+Nutze meine Schnipsel als Basis und integriere sie:
+
+client.ts:
+
+import { API_BASE_URL } from '../config/api';
+
+async function request(path: string, options: RequestInit = {}) {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-role': 'DRIVER',
+      'x-user-id': '00000000-0000-0000-0000-000000000001',
+      ...(options.headers || {})
+    },
+    ...options
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.error || `Request failed with ${res.status}`);
+  }
+  return json;
+}
+
+export const api = {
+  getDriverTasks: () => request('/driver/tasks'),
+  getTaskById: (id: string) => request(`/tasks/${id}`),
+  scan: (body: any) =>
+    request('/scan', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+};
+
+Screens – bitte meine Beispiele einbauen und optisch/strukturell verbessern:
+
+- TaskListScreen:
+  - GET /api/driver/tasks
+  - Liste von Tasks mit Titel, Kunde, Container, Status
+- TaskDetailScreen:
+  - GET /api/tasks/:id
+  - Anzeige von Kunde, Container (Inhalt, Menge), Status
+  - Button „Container scannen“ → navigiert zum ScanScreen
+- ScanScreen:
+  - Expo `BarCodeScanner` verwenden
+  - nach Scan:
+    - POST /api/scan mit `qrCodeValue` (aus dem Scan), `scanContext` (z. B. TASK_ACCEPT_AT_CUSTOMER oder TASK_COMPLETE_AT_WAREHOUSE) und `taskId`
+    - Loading-State
+    - Erfolgspopup bei Erfolg (inkl. `message` aus API)
+    - Fehlermeldung bei Fehler
+
+Navigation:
+
+- `App.tsx` mit React Navigation (Stack):
+  - Screen "Tasks" → TaskListScreen
+  - Screen "TaskDetail" → TaskDetailScreen
+  - Screen "Scan" → ScanScreen
+
+4) INTEGRATION & AUFRÄUMEN
+==========================
+
+Bitte:
+
+- integriere alle genannten Schnipsel (SQL, Backend, Expo) zu einem funktionierenden Ganzen,
+- passe die Typen, Importe und Pfade an,
+- entferne unnötigen alten Replit-DB-Code,
+- sorge dafür, dass:
+  - QR-Code stabil bleibt,
+  - Scan-Flows funktionieren,
+  - Container-Reset funktioniert,
+  - Task-Status-Übergänge korrekt sind,
+  - ActivityLog gepflegt wird.
+
+Dokumentation:
+- Schreibe in eine README (oder Kommentare):
+  - wie man Backend startet (npm install, npm run dev),
+  - welche ENV-Variablen nötig sind (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ggf. DB_PASSWORD, PORT),
+  - wie man die Expo-App startet (cd mobile, npm install, npx expo start),
+  - wo `API_BASE_URL` gesetzt wird.
+
+Ziel:
+- Ich möchte am Ende:
+  - Supabase-Datenbank
+  - ein laufendes Backend mit allen Routen
+  - eine Expo-App, die gegen diese API arbeitet
+  - stabile QR-Codes
+  - funktionierenden Scan-Flow für Fahrer (Android & iOS).
+Bitte alles robust und professionell umsetzen.

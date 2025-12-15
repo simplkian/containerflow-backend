@@ -1,0 +1,170 @@
+1) Prompt-Erweiterung: Map-Editor Marker löschen
+Fachregel
+
+Marker (Halle/Station/Stand) können gesetzt, verschoben und gelöscht werden.
+
+Löschen bedeutet: Koordinaten entfernen, nicht Entität löschen.
+
+UI muss eine Sicherheitsabfrage haben.
+
+Umsetzung
+
+Für Hallen: halls.location_meta.mapMarker = null (oder Feld löschen)
+
+Für Stationen: stations.location_meta.x/y = null (oder entire location_meta entfernen)
+
+Für Stände: stands.position_meta.x/y = null
+
+2) Prompt-Erweiterung: Stationen global eindeutig (keine Duplikate wie K13-S01 & K18-S01)
+
+Du beschreibst aktuell ein Muster wie:
+
+K13 hat “Station 01”
+
+K18 hat “Station 01”
+…nur mit anderem Code (oder identischem Pattern).
+
+Wenn du willst, dass Stationen einmalig sind, gilt:
+
+Neue Regel (zwingend)
+
+stations.code ist global UNIQUE (nicht nur je Halle).
+
+Eine Station wird verschoben, nicht “neu pro Halle angelegt”.
+
+In UI wird nicht “K13-S01” als Identität geführt, sondern z. B.:
+
+S01 oder STATION-01 (global)
+
+und Halle ist nur Standort/Container.
+
+DB-Migration (zwingend)
+CREATE UNIQUE INDEX IF NOT EXISTS stations_code_uniq
+ON public.stations(code);
+
+Datenmigration (falls du bereits Duplikate hast)
+
+Wenn es bereits doppelte Codes gibt, brauchst du entweder:
+
+Codes vereinheitlichen (umbenennen), oder
+
+eine Canonical-Station wählen und die anderen zusammenführen (Merge).
+
+Da du aber sagst „es darf nicht sein“, ist das vermutlich ein Seed/Logik-Fehler und noch korrigierbar.
+
+🔴 EXPERTENPROMPT (Copy/Paste) – Marker löschen + Station global eindeutig
+
+Du kannst das direkt in Replit geben:
+
+🔴 PROMPT START
+
+Du bist Lead Engineer (NestJS + Postgres + Expo RN). Implementiere zwei Korrekturen: (1) Map-Editor Marker löschen, (2) Stationen sind global eindeutig (keine Station-Duplikate pro Halle).
+
+Teil A — Map Editor: Marker setzbar, verschiebbar UND löschbar
+UI
+
+Im Admin „Map Editor“:
+
+Marker (Halle/Station/Stand) sind anklickbar.
+
+Beim Klick öffnet sich ein kleines Kontextmenü:
+
+„Verschieben“ (Drag/Drop oder Klick-Neusetzen)
+
+„Löschen“ (nur Koordinaten löschen)
+
+„Löschen“ erfordert Confirm Dialog:
+
+„Marker wirklich löschen? Die Entität bleibt bestehen.“
+
+Backend
+
+Implementiere DELETE/PATCH Endpoints:
+
+PATCH /admin/halls/:id/map-marker { x, y } // set
+
+DELETE /admin/halls/:id/map-marker // delete -> set mapMarker null/remove
+
+PATCH /admin/stations/:id/position { x, y }
+
+DELETE /admin/stations/:id/position // delete -> remove x/y or set null
+
+PATCH /admin/stands/:id/position { x, y }
+
+DELETE /admin/stands/:id/position
+
+Servervalidierung:
+
+x,y nur im Bereich 0..1
+Audit:
+
+activity_logs type='MAP'
+
+action: MAP_MARKER_SET / MAP_MARKER_DELETED
+
+metadata enthält entityType, entityId, before/after
+
+Teil B — Stationen global eindeutig (keine Station-01 pro Halle)
+Fachregel
+
+Eine Station ist ein global eindeutiges Objekt.
+
+stations.code muss global UNIQUE sein.
+
+Hallen-Zuordnung ist Standort (stations.hall_id) und kann geändert werden (Move).
+
+Es darf nicht vorkommen, dass „Station 01“ mehrfach existiert (egal in welcher Halle).
+
+DB
+
+Erzeuge Unique Index:
+
+CREATE UNIQUE INDEX IF NOT EXISTS stations_code_uniq
+ON public.stations(code);
+
+
+Entferne/ignoriere (hall_id, code) Constraint, falls vorhanden und redundant.
+
+Backend
+
+Create Station:
+
+verweigere Duplikat code mit 409 Conflict
+
+Move Station (hall_id ändern):
+
+kein neues Station-Objekt erzeugen, sondern Update stations.hall_id
+
+In allen UI-Flows:
+
+Auswahl „Station“ ist global, danach wird Halle nur angezeigt/gewählt für Umzug
+
+Data Repair / Migration Script (falls Seeds Duplikate erzeugt haben)
+
+Schreibe ein Repair Script:
+
+finde Duplikate nach stations.code
+
+stoppe mit Fehler + Report, wenn Duplikate existieren
+
+(optional) biete Merge-Funktion über Admin an (nicht automatisch ohne Freigabe)
+
+UI Anpassung
+
+In Layout-Verwaltung:
+
+Stationen werden global gelistet
+
+„Station verschieben nach Halle“ ändert nur hall_id
+
+In Map:
+
+Station marker ist an station_id gebunden; wenn Station umgezogen wird, erscheint sie nur in der neuen Halle
+
+Output:
+
+Vollständiger Code Backend+UI
+
+Migrationen
+
+README_STATIONS_UNIQUE.md + README_MAP_EDITOR.md

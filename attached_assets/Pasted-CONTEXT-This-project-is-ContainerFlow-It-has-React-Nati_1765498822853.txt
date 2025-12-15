@@ -1,0 +1,234 @@
+CONTEXT
+=======
+
+This project is "ContainerFlow". It has:
+
+- React Native + Expo frontend (Admin + Driver)
+- Node.js + Express backend with REST API under /api
+- PostgreSQL + Drizzle ORM (Supabase via DATABASE_URL)
+- Roles: ADMIN and DRIVER
+- Container + tasks + scan flows + activity logs
+
+Supabase and DATABASE_URL are already correctly configured, and /api/health returns:
+
+  { "status": "ok", "database": "connected", ... }
+
+I now want you to make three sets of changes:
+
+1) ADMIN UI CLEANUP – ACTIVITY TABS
+2) TASK CREATION FIX + CAPACITY VALIDATION
+3) WAREHOUSE CONTAINER "EMPTY" ENDPOINT FIX + UI CONFIRMATION
+
+Please implement all of this WITHOUT changing the core business logic (task lifecycle, QR-code concept, roles, etc.), only fixing bugs and adjusting UI/validation.
+
+
+1) ADMIN UI – ONLY ONE ACTIVITY TAB
+===================================
+
+Goal: In the Admin UI there should be only ONE place for activity history.
+
+Currently there are (or seem to be) multiple entries like:
+- "Aktivitätsverlauf"
+- "Aktivitätsprotokoll"
+
+Please:
+
+- Keep ONLY ONE tab / menu entry for the activity history (call it e.g. "Aktivitätsverlauf").
+- Remove any separate / duplicate menu item "Aktivitätsprotokoll" from the Admin navigation.
+- If there is functionality tied to "Aktivitätsprotokoll" that is not present in "Aktivitätsverlauf", merge it into the single remaining activity view.
+- Ensure:
+  - The Admin navigation shows only one clear entry for the activity log/history.
+  - Routing/links are updated to avoid dead routes or 404s.
+  - UI labels are consistent.
+
+IMPORTANT:
+- Do NOT change the underlying activityLogs data model or backend behavior.
+- ONLY adjust frontend navigation / tabs / naming so that there is a single, clear activity view for admins.
+
+
+2) TASK CREATION – TIMESTAMP BUG + CAPACITY VALIDATION
+======================================================
+
+There is a runtime error when creating tasks:
+
+- POST /api/tasks sometimes returns HTTP 500 with error:
+  "Failed to create task: TypeError: value.toISOString is not a function"
+
+This indicates a mismatch between Drizzle's PgTimestamp column and the values being passed (non-Date being used where a Date is expected, or vice versa).
+
+2.1 Fix the technical timestamp issue in task creation
+------------------------------------------------------
+
+- Locate the POST /api/tasks handler and any service it calls.
+- Inspect the Drizzle schema for the tasks table (in shared/schema.ts or equivalent) and identify all timestamp columns, e.g.:
+  - plannedExecutionTime / planned_execution_time
+  - createdAt / created_at
+  - updatedAt / updated_at
+  - assignedAt / assigned_at
+  - acceptedAt / accepted_at
+  - pickedUpAt / picked_up_at
+  - inTransitAt / in_transit_at
+  - deliveredAt / delivered_at
+  - completedAt / completed_at
+  - cancelledAt / cancelled_at
+
+- Ensure a consistent approach:
+  - If columns are defined with `mode: "date"` (or equivalent), they must receive real JS Date objects (or null/undefined).
+  - If columns are defined with `mode: "string"`, they must receive strings (e.g. ISO strings).
+
+- Fix the POST /api/tasks code so that:
+  - It converts incoming date/time strings from the request body into appropriate values (e.g. `new Date(...)`) before passing them to Drizzle, OR
+  - It passes strings if the schema expects strings.
+  - It never passes arbitrary objects that do not have `.toISOString()` when Drizzle expects Date.
+
+- If the client sends invalid date formats, return HTTP 400 with a clear error JSON (e.g. `{ "error": "Invalid plannedExecutionTime format" }`).
+
+Goal:
+- POST /api/tasks must no longer throw `value.toISOString is not a function`.
+- Tasks must be created successfully and timestamps stored correctly in Supabase.
+
+2.2 Capacity validation – prevent overfilling target container
+--------------------------------------------------------------
+
+We want a business validation on task creation:
+
+When an admin creates a task with a certain amount (plannedQuantity, amountToPickup, etc.), and that task is meant to move waste into a target warehouse container, we must ensure that the target container has enough remaining capacity.
+
+Use the existing schema fields (do NOT invent new ones), e.g.:
+
+- On the target container:
+  - totalCapacity / maxVolume / maxWeight (or similar)
+  - currentFill / currentQuantity / currentLoad (or similar)
+
+You must:
+
+- For the given task:
+  - Identify which warehouse container will receive the waste (the "Zielcontainer").
+- Compute:
+  - `remainingCapacity = capacity - currentFill` (adapt to real field names and units).
+- Compare:
+  - If `plannedQuantity > remainingCapacity` then the task must NOT be created.
+
+Behavior:
+
+- If the requested amount fits into the remaining capacity:
+  - Create the task as usual.
+
+- If the requested amount is larger than remaining capacity:
+  - Return HTTP 400.
+  - Return a clear JSON error, e.g.:
+
+    ```json
+    {
+      "error": "Zielcontainer hat nicht genug übriges Volumen für diese Menge."
+    }
+    ```
+
+- Do NOT silently adjust or clamp the amount.
+- This validation must be enforced server-side in the POST /api/tasks logic (or its service layer).
+
+Frontend/Admin behavior:
+
+- Ensure that the Admin UI for task creation:
+  - Checks the response from POST /api/tasks.
+  - If it receives a 400 with the error above, shows this message clearly to the user (e.g. toast, inline error under the amount field, or dialog).
+  - Does NOT leave the UI in a broken state.
+
+
+3) WAREHOUSE CONTAINER "EMPTY" ENDPOINT + UI CONFIRMATION
+=========================================================
+
+Currently, attempting to empty a warehouse container fails:
+
+- PATCH /api/containers/warehouse/WH-003 → HTTP 500 ("Failed to update...").
+- GET /api/containers/warehouse/WH-003 → works.
+
+3.1 Fix the backend logic for emptying a warehouse container
+------------------------------------------------------------
+
+- Locate the route/handler for:
+  - `PATCH /api/containers/warehouse/:id`
+  or whichever endpoint is used for "emptying" / "resetting" a warehouse container.
+
+- Identify and fix the cause of the 500 error:
+  - Drizzle column mismatch?
+  - Passing invalid values (e.g. null to a non-nullable column)?
+  - Another timestamp issue?
+
+- Define and implement correct behavior for "emptying" a warehouse container:
+
+  - Only ADMINs are allowed to perform this action.
+    - Enforce a role check (e.g. `currentUser.role === "ADMIN"`).
+    - If not admin → return 403 `{ "error": "Forbidden" }`.
+
+  - If the container (by id/path param) is not found → return 404 `{ "error": "Container not found" }`.
+
+  - If the container is found:
+    - Reset the appropriate fields that represent the current fill level / quantity to zero.
+      - Use the real schema: e.g. `currentQuantity = 0`, `fillLevel = 0`, etc.
+    - Update `updatedAt` or equivalent timestamp.
+    - Insert an activity log entry in `activityLogs`:
+      - Using an appropriate ActivityLogType (reuse existing enum, e.g. CONTAINER_SCAN or create a suitable one if already defined in schema).
+      - Message example: `"Warehouse container WH-003 was emptied by admin <user>"`.
+    - Optionally update `fillHistory` to record that the container was emptied at this moment (if such logic already exists or is simple to integrate).
+
+- Response for a successful "empty" operation:
+
+  - HTTP 200 with JSON, for example:
+
+    ```json
+    {
+      "message": "Container successfully emptied",
+      "container": { ...updated container data... }
+    }
+    ```
+
+- If the container is already empty, choose a clean behavior:
+  - Either treat it as idempotent and return 200 with `"message": "Container is already empty"` OR
+  - Return 400 with `"error": "Container is already empty"`.
+  - Use one approach consistently and ensure the Admin UI handles it gracefully.
+
+3.2 Admin UI – Confirmation + feedback when emptying a container
+----------------------------------------------------------------
+
+In the Admin UI, when the user clicks "Container leeren" (or equivalent):
+
+- Add a confirmation step before the PATCH request is sent:
+  - Show a confirmation dialog:
+    - "Möchtest du diesen Container wirklich leeren?"
+    - Buttons: "Abbrechen" / "Ja, leeren".
+
+- Only if the user confirms "Ja, leeren":
+  - Send the PATCH request to `/api/containers/warehouse/:id`.
+
+- After a successful response (HTTP 200):
+  - Show a clear success message to the admin, e.g.:
+    - Toast / Snackbar: "Container wurde erfolgreich geleert."
+  - Update the UI to reflect the new fill level (0) of the container.
+
+- If the backend returns an error (4xx/5xx):
+  - Show an error message instead of silently failing.
+
+AUTH NOTE:
+==========
+
+- Do NOT relax authentication/authorization for user creation:
+  - `POST /api/users` returning 401 "Authentication required" is correct and must remain so.
+- Do NOT remove role checks for ADMIN/DRIVER where they already exist.
+- Only adjust the container emptying, admin UI, and task creation/validation as described above.
+
+FINAL GOAL
+==========
+
+After your changes:
+
+- Admin UI:
+  - Only one activity tab/entry ("Aktivitätsverlauf"), no duplicate "Aktivitätsprotokoll".
+- Task creation:
+  - No more 500 errors on POST /api/tasks due to timestamp handling.
+  - When the planned amount exceeds the target container’s remaining capacity, creation fails with 400 and a clear error message.
+- Warehouse container "empty":
+  - PATCH /api/containers/warehouse/:id works reliably for admins.
+  - Container fill is reset to 0 in the DB.
+  - Activity logging reflects the empty action.
+  - Admin UI shows confirmation before emptying and a success message afterwards.

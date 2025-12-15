@@ -1,0 +1,361 @@
+2) „Riesenprompt“: Gesamtprompt inkl. Werksplan-Logik, Auto-Tasks, Open-Queue, Activity, Analytics, SQL-Import
+
+Diesen Prompt gibst du direkt an Replit AI/Cursor/Claude/ChatGPT (Coding) und fügst dazu dein Repo/Prisma-Schema/Controller ein.
+Wichtig: Der Prompt erzwingt Umbau (nicht „Tab hinzufügen“) und implementiert Auto-Tasks + Vorschau + manuelle Tasks + Lager-Container-Management + Audit + Stats.
+
+MASTER PROMPT (Production-Refactor für Automotive-Werk: Behälter/Stationen/Materialien, Open Queue, Scheduling, Analytics)
+
+Rolle & Arbeitsweise
+Du bist Lead Software Architect + Senior Full-Stack Engineer (NestJS + Prisma + Postgres + Expo RN).
+Du arbeitest restrukturierend: Die App ist ausschließlich für Werks-Behälter/Stationen/Materialfluss. Alte Task-/QR-Logik wird ersetzt. Keine parallelen Systeme. Keine „Admin-Tab-Workarounds“.
+
+Werkskontext (aus Planunterlage)
+Es gibt einen Außenbereich und mehrere Hallen/Bauabschnitte (u. a. K13, K18, K19, K25; Außenbereich inkl. K70). Gelbe nummerierte Felder sind Behälterpositionen; blaue Farbflächen/Legenden stehen für Material-/Fraktionsarten; gruppierte gelbe Felder entsprechen Stationen. (Plan dient als fachlicher Referenzrahmen; Implementierung muss datengetrieben sein.)
+
+Zentrale Produktregeln (nicht verhandelbar)
+
+Open Queue / Keine Zuweisung: Jeder sieht immer alle Tasks, jeden Tag. Niemand bekommt Tasks zugewiesen.
+
+Jeder kann alles: Jeder User kann jeden Task claimen, jeden Schritt durchführen (Abholen, Abstellen, Wiegen, Entsorgen). Rollen dürfen operative Aktionen nicht einschränken. Admin ist nur für Stammdaten/Settings zusätzlich berechtigt.
+
+Claim nur als Kollisionsschutz: Claim verhindert nur parallele Bearbeitung, nicht Sichtbarkeit. TTL 30 Minuten.
+
+Material kommt aus Stand (Ständer): Material ist nicht „dauerhaft“ an Box gespeichert; Material ergibt sich über Ständer/Stand-Kontext (Ständername/Stand-Entity).
+
+Scan-first: Station, Stand, Box, Lagercontainer haben QR-Codes. Scan ist Quelle der Wahrheit.
+
+Audit & Analytics Pflicht: Jede Aktion schreibt AuditEvent mit sekundengenauem Timestamp.
+
+A) Datenmodell (Prisma) – muss vorhanden sein
+Kern-Entitäten
+
+Hall (z. B. K13, K18, K19, K25, Außenbereich)
+
+Station (Cluster von Behälterpositionen; kann innen/außen sein)
+
+Material (Fraktionen: Abfall + Schrott; Import aus SQL Seed)
+
+Stand (Ständer; definiert Material; z. B. Standname = Materialidentität)
+
+Box (beweglich; kann Station wechseln)
+
+WarehouseContainer (Lager-Container; materialgebunden; Kapazität; voll/blocked; manuell leeren)
+
+Task (Workflow-Instanz)
+
+TaskSchedule (geplante automatische Aufgaben; daily/weekly/interval; Vorschau)
+
+AuditEvent (Event-Store / Aktivitätsfeed)
+
+User (+ optional Department)
+
+Open-Queue / Claim
+
+Task muss besitzen:
+
+status (Enum, siehe State Machine unten)
+
+source (SCHEDULED | MANUAL | ADHOC)
+
+scheduledFor (DateTime? – Datum, für das die Aufgabe geplant ist)
+
+claimedById (String? nullable)
+
+claimedAt (DateTime? nullable)
+
+dedupKey (String? unique – gegen Duplikate bei Scheduling)
+
+Kontextfelder: materialId, standId, stationId, optional hallId, optional boxId, optional targetContainerId
+
+weightKg (Int?; Pflicht vor Abschluss)
+
+B) State Machine (serverseitig enforced)
+
+Status Enum:
+
+OPEN
+
+PICKED_UP
+
+IN_TRANSIT
+
+DROPPED_OFF
+
+TAKEN_OVER
+
+WEIGHED
+
+DISPOSED
+
+CANCELLED (Admin-only)
+
+Übergänge:
+
+OPEN → PICKED_UP
+
+PICKED_UP → IN_TRANSIT
+
+IN_TRANSIT → DROPPED_OFF (automatisches Release: claimedById=null)
+
+DROPPED_OFF → TAKEN_OVER
+
+TAKEN_OVER → WEIGHED (weightKg Pflicht)
+
+WEIGHED → DISPOSED
+
+any → CANCELLED (Admin-only)
+
+Jeder kann alles: Keine Rollenprüfung in operativen Transitionen.
+
+C) Scheduling: automatische Aufgaben + Vorschau (Admin konfigurierbar)
+TaskSchedule
+
+ruleType: DAILY | WEEKLY | INTERVAL
+
+timeLocal: "HH:MM"
+
+timezone: "Europe/Berlin"
+
+createDaysAhead: int (Default 14)
+
+schedule → Stand (Pflicht) und Station (falls nicht implizit)
+
+isActive
+
+Scheduler-Job
+
+Cron läuft mindestens stündlich
+
+erzeugt Tasks für die nächsten createDaysAhead Tage
+
+dedupKey: SCHED:${scheduleId}:${YYYY-MM-DD}
+
+Policy für Rückstände:
+
+AUTO_CANCEL_PREVIOUS=true cancelt gestrige OPEN scheduled tasks beim Erstellen neuer (konfigurierbar)
+
+Admin: Vorschau
+
+Endpoint GET /admin/schedules/preview?days=14
+
+Liefert geplante Vorkommen inkl. Flag, ob Task bereits existiert
+
+D) Manuelle Tasks (Admin)
+
+Admin kann jederzeit Task erzeugen:
+
+Auswahl: Hall → Station → Stand → optional Box/Scan
+
+Task wird OPEN, source=MANUAL
+
+AuditEvent schreiben
+
+E) Lagercontainer-Management
+
+WarehouseContainer:
+
+materialId
+
+capacityKg
+
+isFull, isBlocked
+
+currentKg optional
+
+lastEmptiedAt
+
+notes
+
+Manuelles Leeren:
+
+POST /warehouse-containers/:id/empty (Admin; optional auch alle User, wenn gewünscht)
+
+setzt isFull=false, isBlocked optional, currentKg=0 optional
+
+AuditEvent: CONTAINER_EMPTIED
+
+Zielcontainer-Vorschlag:
+
+bei Task (Material X): ersten Container materialId=X und isFull=false und isBlocked=false vorschlagen.
+
+F) Activity / AuditEvent (Pflicht)
+
+AuditEvent muss bei jedem schreiben:
+
+SCAN (Station/Stand/Box/Container)
+
+TASK_CREATED (SCHEDULED/MANUAL/ADHOC)
+
+CLAIM / RELEASE / AUTO_RELEASE_EXPIRED
+
+STATUS_CHANGED
+
+WEIGHT_RECORDED
+
+CONTAINER_ASSIGNED
+
+CONTAINER_EMPTIED
+
+ADMIN_EDIT / CANCELLED
+
+AuditEvent Felder:
+
+timestamp serverseitig (timestamptz, sekundengenau)
+
+actorUserId
+
+action
+
+entityType, entityId
+
+beforeJson, afterJson, metaJson (stationId/hallId/standId/boxId/materialId/containerId/taskId)
+
+UI: Activity Screen
+
+sekundengenauer Zeitstempel
+
+Actor
+
+Aktion + Kontext (Material/Station/Halle/Box/Container)
+
+Filter: Zeitraum, Material, Station, Halle, User, Action
+
+G) Analytics / Statistiken (Pflicht)
+
+Analytics basieren auf:
+
+Task (DISPOSED, weightKg)
+
+AuditEvent (wer hat welche Aktionen gemacht)
+
+Endpoints:
+
+/analytics/materials?from&to (sumKg, taskCount)
+
+/analytics/stations?from&to (station → sumKg + breakdown je material)
+
+/analytics/halls?from&to
+
+/analytics/users?from&to (Anzahl Aktionen + DISPOSED count + sumKg)
+
+/analytics/lead-times?from&to&by=station|material (Durations zwischen Statuswechseln)
+
+/analytics/backlog?olderThanHours=... (hängende Tasks nach Status)
+
+optional: /analytics/containers?from&to (Nutzung/Leeren, Vollmeldungen)
+
+UI: Analytics Dashboard (Admin)
+
+Zeitraum-Picker
+
+KPI Cards: Gesamt kg, Top Material, Top Station, offene Tasks
+
+Tabellen + einfache Charts (echte Daten, keine Dummies)
+
+H) „Jeder sieht alle Tasks, jeden Tag vorne“
+
+UI-Defaults:
+
+Hauptliste zeigt alle Tasks (keine persönlichen Listen)
+
+Sortierung:
+
+OPEN (scheduledFor heute zuerst)
+
+DROPPED_OFF (abgestellt – wichtig)
+
+IN_TRANSIT/PICKED_UP
+
+Rest
+
+Kategorien/Tabs:
+
+Offen
+
+Unterwegs
+
+Abgestellt
+
+In Entsorgung
+
+Abgeschlossen
+
+Geplant (nächste Tage; basiert auf scheduledFor)
+
+I) SQL Import / Seeds (Pflicht integrieren)
+
+Du erhältst zwei Seed-SQLs:
+
+seed_materials.sql (Material/Fraktionen: Abfall + Schrott)
+
+seed_container_assets.sql (Dumpmaster/Loren Historie + Fraktionslabel)
+
+Aufgaben:
+
+Stelle sicher, dass das DB-Schema (Material, ContainerAsset/Container) diese Daten aufnehmen kann.
+
+Baue einen Fraktionslabel-Normalizer:
+
+Mapping-Tabelle FractionAlias (alias → materialId), um Schreibvarianten zu konsolidieren.
+
+Admin UI: Alias pflegen.
+
+Import soll idempotent sein (Upsert).
+
+J) Lieferumfang (Code, nicht Pseudocode)
+
+Prisma migration + seed pipeline
+
+Scheduler + Preview + Schedule CRUD
+
+Manual Task Create UI + API
+
+Open-Queue Claim/Release + TTL
+
+Activity Feed + Filters
+
+Analytics Endpoints + Dashboard UI
+
+WarehouseContainer empty/edit UI
+
+README: Setup, Cron, Indizes, Beispielcalls
+
+Wichtig: Keine Rollenchecks für operative Tasks. Nur Admin-only für Stammdaten/Schedules/CANCELLED.
+
+Akzeptanzkriterien
+
+Jeder User sieht exakt dieselben Tasks.
+
+Jeder kann jeden Task claimen/weiterführen; Abstellen macht ihn sofort wieder frei.
+
+Auto-Tasks werden für die nächsten Tage erzeugt + Vorschau zeigt geplante Aufgaben.
+
+Gewicht ist Pflicht vor Abschluss.
+
+Jede Aktion ist im Activity Feed sekundengenau nachvollziehbar.
+
+Analytics liefert Materialmengen nach Zeitraum/Station/Halle und User-Aktivität.
+
+3) Was ich aus der PDF bereits sinnvoll ableiten kann
+
+Aus der PDF geht für die App-Logik vor allem hervor, wie dein Datenmodell strukturiert sein muss:
+
+Hallen-/Bereichscodes (K13, K18, K19, K25; Außenbereich) als Hall. 
+
+Anlage C3 Behälterstandorte We…
+
+Stationen sind Gruppen von Behälterpositionen (gelbe Nummern im Cluster). 
+
+Anlage C3 Behälterstandorte We…
+
+Materialien/Fraktionen sind farblich markiert und korrespondieren zu deinen Fraktionslisten (Excel). 
+
+Anlage C3 Behälterstandorte We…
+
+Was ich aus der PDF allein nicht zuverlässig extrahieren kann (ohne OCR/Manuelle Mappingtabelle) sind die vollständigen Listen:
+
+„Station X besteht aus Behälter-Nrn {…}“ über alle Pläne hinweg
+
+exakte Zuordnung jeder gelben Nummer zu Station/Halle + Materialfarbe
+
+Dafür ist in deinem Prompt oben bewusst ein datengetriebener Import-/Alias-Mechanismus vorgesehen (du kannst die Zuordnung später per Admin-UI oder per CSV/SQL importieren).

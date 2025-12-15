@@ -1,0 +1,68 @@
+GOAL
+====
+
+Currently, the “Empty Container” action works inside the Admin area (“Container verwalten”).  
+I want the exact same empty/reset functionality ALSO available for BOTH roles:
+
+- ADMIN  
+- DRIVER  
+
+Specifically, in the bottom navigation under the "Container" tab, when a user (driver or admin) opens a specific container detail screen, they should see the same "Container leeren" button with:
+
+- Confirmation dialog  
+- PATCH request to /api/containers/warehouse/:id  
+- Success toast (“Container wurde erfolgreich geleert.”)  
+- UI refresh (quantity/fill resets to zero)  
+
+The existing implementation in the Admin area can remain, but the same feature must also be available in the general container section accessible to drivers.
+
+
+REQUIREMENTS
+============
+
+1. Add “Container leeren” button on the container detail screen accessed from the bottom navigation ("Container" tab).  
+   - This screen is visible to BOTH drivers and admins.
+
+2. The button must:
+   - Show a confirmation dialog: “Möchtest du diesen Container wirklich leeren?”
+   - On confirmation: send the same PATCH request already used in the Admin version.
+   - Handle loading state.
+   - Show success message after the operation.
+   - Update the container details in the UI immediately.
+
+3. Permission rules:
+   - Currently only admins are allowed to empty containers.
+   - For this change, UPDATE THE RULE so that BOTH DRIVER AND ADMIN may empty warehouse containers.
+   - If role-check exists in the backend preventing drivers from emptying containers, adjust it:
+     - Allow DRIVER role as well.
+     - Fail ONLY if an unknown role appears.
+
+4. Keep the Admin version of “empty container” intact — do NOT remove it.
+   Only extend availability so the bottom-navigation container view also has access.
+
+5. UI/UX improvements:
+   - Ensure the button is clearly labeled (“Container leeren”).
+   - Style consistent with the existing design system.
+   - Button should not appear for customer containers, only warehouse containers.
+   - If a container is already empty, disable the button or show alternative text (“Container ist bereits leer”).
+
+6. Backend considerations:
+   - The PATCH endpoint must allow both ADMIN and DRIVER.
+   - Activity logs should continue to be created as before.
+   - No changes to QR codes, task logic, or status transitions.
+
+7. Final verification:
+   - Open container from bottom nav → press “Container leeren” → confirm → PATCH succeeds → UI updates → success toast.
+   - Driver and Admin accounts must both be able to perform the action.
+   - No 403 errors for driver role.
+   - No duplicate buttons in the same screen.
+
+
+IMPORTANT:
+----------
+Do NOT modify unrelated features such as QR scanning, task assignment, user creation, or Supabase configuration.
+
+ONLY apply the changes needed to:
+
+- Expose the existing “empty container” feature in the bottom navigation container detail screen.
+- Allow both driver and admin roles to execute the action.

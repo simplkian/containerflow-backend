@@ -1,0 +1,153 @@
+Du bist Lead Engineer (NestJS + Prisma/Postgres + React Native/Expo). Implementiere eine „Stellplatz-/Map-Verknüpfung“ und Scan-Logik, die die Zuordnung Stand ↔ Box automatisch pflegt.
+
+Ausgangslage (bestehendes Schema)
+
+halls(id, code, name, location_meta)
+
+stations(id, hall_id, code, name, location_meta)
+
+stands(id, station_id, identifier, material_id, qr_code UNIQUE, position_meta, daily_full, daily_task_time_local)
+
+boxes(id, stand_id NULLABLE, qr_code UNIQUE, serial UNIQUE, status, current_task_id, last_seen_at)
+
+tasks(id, stand_id, box_id, status, claimed_by_user_id, scheduled_for, source, dedup_key, weight_kg, target_warehouse_container_id, ...)
+
+scan_events, task_events, activity_logs vorhanden
+
+Produktregeln
+
+„Stellplatz“ entspricht einem stand (Material ist über stands.material_id definiert).
+
+Boxen sind beweglich: boxes.stand_id kann NULL sein (Box unterwegs / nicht platziert).
+
+Beim Abholen einer Box muss die Box vom Stellplatz entfernt werden:
+
+boxes.stand_id = NULL
+
+boxes.status = 'IN_TRANSIT' (oder konsistenter Statuswert, falls bereits definiert)
+
+Audit/Event schreiben
+
+Beim Abstellen einer (leeren) Box am Stellplatz muss sie zugeordnet werden:
+
+boxes.stand_id = <standId>
+
+boxes.status = 'AT_STAND'
+
+boxes.last_seen_at = now()
+
+Audit/Event schreiben
+
+Pro Stand darf maximal eine aktive Box stehen. Wenn eine neue Box zugeordnet wird:
+
+entweder vorherige Box automatisch auf stand_id=NULL setzen (mit Audit),
+
+oder hard error + UI Hinweis. Entscheide dich für „AUTO-REPLACE“ (professioneller im Betrieb).
+
+Admin-Funktion: Verknüpfung / Map
+
+Implementiere im Admin-Bereich einen Screen „Stellplatz-Zuordnung“ mit zwei Modi:
+
+Modus A (MVP, Pflicht): Hierarchische Auswahl
+
+Dropdown Halle → Station → Stand
+
+Stand-Detail zeigt:
+
+Material (aus stands.material_id)
+
+aktuell zugewiesene Box (falls vorhanden)
+
+Buttons:
+
+„Box zuweisen“ (Scan oder Auswahl aus Liste Box-001..300)
+
+„Box entfernen“ (setzt stand_id=NULL)
+
+Zusätzlich eine „Box-Suche“ (nach serial)
+
+Die Auswahl soll ohne Freitext funktionieren.
+
+Modus B (optional, professional): Grafische Karte
+
+Nutze location_meta und position_meta als Koordinatenbasis.
+
+Zeige pro Station eine schematische Ansicht (SVG/Canvas):
+
+Stands als klickbare Marker
+
+Farbe = Material
+
+Marker-Label = identifier
+
+Bei Klick: Stand-Detail + Box-Zuordnung
+
+Scan-Flow (Pflicht)
+
+Implementiere einen Scan-Workflow, der Zuordnungen automatisch pflegt:
+
+Flow 1: „Box abstellen“ (Placement)
+
+User scannt Stand-QR ({"t":"STAND","id":"..."}) → App merkt standId als Kontext
+
+Danach scannt User Box-QR → API ordnet Box dem Stand zu
+
+Endpoint: POST /scan/place-box
+payload: { standQr: string, boxQr: string, geo?:..., locationDetails?:... }
+server:
+
+resolve stand by qr_code
+
+resolve box by qr_code
+
+if another box currently on this stand: set that box stand_id=NULL + Audit (AUTO-REPLACE)
+
+set new box stand_id=stand.id, status='AT_STAND', last_seen_at=now()
+
+write scan_events + activity_logs + task_events (entity=BOX/STAND)
+
+Flow 2: „Box abholen“ (Removal)
+
+User scannt Box-QR (Box ist am Stand)
+
+App zeigt Aktion „Abholen“
+
+Endpoint: POST /scan/pickup-box
+payload: { boxQr: string }
+server:
+
+resolve box
+
+store previousStandId = box.stand_id
+
+set box.stand_id=NULL, status='IN_TRANSIT'
+
+write scan_events + activity_logs + task_events (include previousStandId)
+
+Task-Integration (Pflicht)
+
+Wenn ein Task existiert und die Box dem Task entspricht:
+
+Beim Pickup-Scan: Task Status auf PICKED_UP/IN_TRANSIT setzen (je nach bestehender State Machine)
+
+Beim Placement (Abstellen): Task Status auf DROPPED_OFF setzen UND Task claim ggf. freigeben
+
+Alle Änderungen schreiben task_events mit timestamp und meta_json.
+
+Wichtig: In dieser App gibt es keine Task-Zuweisung (assigned_to ignorieren). Alle sehen alles.
+
+Datenqualität / Konsistenz
+
+Transaktionen verwenden: Placement/Removal muss atomar sein.
+
+Unique-Konflikte sauber behandeln (409 + userfreundliche Message).
+
+Jede Aktion schreibt sekundengenau Activity/Audit.
+
+Output
+
+Backend Controller/Service + SQL/Prisma Anpassungen falls nötig
+
+RN UI Screens für Modus A (Pflicht) + optional Modus B
+
+README_MAPPING.md: Wie man Stands/Boxes verknüpft, wie Scan-Flows funktionieren.

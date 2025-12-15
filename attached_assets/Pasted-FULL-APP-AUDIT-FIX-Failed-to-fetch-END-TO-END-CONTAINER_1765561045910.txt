@@ -1,0 +1,152 @@
+FULL APP AUDIT + FIX “Failed to fetch” (END-TO-END) — CONTAINERFLOW
+===================================================================
+
+CONTEXT
+=======
+We have ContainerFlow:
+- Expo React Native (Expo Go) mobile app
+- Node/Express backend
+- PostgreSQL (Supabase) via Drizzle
+- API routes under /api/*
+Recently, core functions like creating tasks (and other actions) suddenly stopped working.
+In the app we only see: “Failed to fetch” (no helpful error message).
+
+GOAL
+====
+Do a complete top-to-bottom audit and fix so that:
+1) All API calls work again (especially: create task, update container, scan flows)
+2) “Failed to fetch” is replaced by clear, user-friendly error messages
+3) The app/backend configuration is consistent across:
+   - Replit dev
+   - local VS Code
+   - Render (if still used)
+4) We can reliably reproduce the bug and confirm the fix with tests
+
+IMPORTANT RULES
+===============
+- Do NOT remove features. Fix them.
+- Do NOT introduce new env variable names. Keep current strategy (EXPO_PUBLIC_DOMAIN).
+- Frontend must NEVER call Supabase directly.
+- Keep stable QR logic intact.
+
+--------------------------------------------------------------------
+PART 1 — IDENTIFY THE REAL ROOT CAUSE OF “Failed to fetch”
+--------------------------------------------------------------------
+
+1) Determine whether “Failed to fetch” comes from:
+   A) Wrong API base URL / wrong domain / wrong protocol
+   B) CORS / mixed content (http/https)
+   C) Backend not reachable from device (Android/iOS)
+   D) Backend route errors (500) but client doesn’t parse them
+   E) Network issues / DNS / TLS
+
+2) Add immediate diagnostics in the client request helper:
+   - Log the FULL URL of every request (only in dev)
+   - Log method, path, and request body size
+   - Capture and show:
+     - network errors (fetch threw)
+     - HTTP errors (non-2xx) with response text/json
+   - Detect if response is HTML ("text/html") and throw explicit misconfiguration error.
+
+Required client behavior:
+- If fetch fails => show a UI message:
+  “Network error: cannot reach API. URL=<...>. Check EXPO_PUBLIC_DOMAIN”
+- If HTTP status not ok => show server error message from JSON.
+- If content-type text/html => show:
+  “API misconfigured: got HTML instead of JSON. Check API_BASE_URL.”
+
+--------------------------------------------------------------------
+PART 2 — VERIFY ENV VARS + API BASE URL (CRITICAL)
+--------------------------------------------------------------------
+
+We use EXPO_PUBLIC_DOMAIN as the single source of truth in the mobile app.
+
+Rules:
+- EXPO_PUBLIC_DOMAIN MUST be set in every environment.
+- For localhost dev: EXPO_PUBLIC_DOMAIN=localhost:5000 and use http://
+- For remote domains: use https://
+
+Implement a single function (centralized) to build API base:
+- reads process.env.EXPO_PUBLIC_DOMAIN
+- if missing, show a developer-friendly screen (not silent crash)
+- returns:
+  - http://localhost:5000/api when domain includes localhost or 127.0.0.1
+  - https://<domain>/api otherwise
+
+Ensure all API calls use this one base URL.
+
+Also ensure the backend listens on process.env.PORT and is reachable.
+
+--------------------------------------------------------------------
+PART 3 — BACKEND AVAILABILITY / HEALTH CHECK
+--------------------------------------------------------------------
+
+1) Confirm backend is running and reachable from the device:
+- Add /api/health that runs a real DB query.
+- Add /api/debug/ping that returns JSON quickly.
+
+2) Add server-side request logging:
+- Log incoming requests method/path/status/time
+- Log errors with stack traces
+
+3) If running on Replit:
+- Ensure correct public domain and ports
+- Ensure CORS is configured to allow Expo origin(s) for testing
+  (for debugging we can allow * temporarily)
+
+--------------------------------------------------------------------
+PART 4 — REPRODUCE + FIX THE BROKEN FEATURES
+--------------------------------------------------------------------
+
+Focus on these operations:
+- Create task
+- Update container (reset/empty, update quantity)
+- Scan endpoint flow
+
+Steps:
+1) Use Postman/curl or browser to call API endpoints directly and confirm they work.
+2) If API returns errors, fix backend route logic.
+3) If API works but app fails, fix client base URL / headers / parsing.
+
+Also fix authentication edge cases:
+- If API returns 401/403, client must display a clear “Not logged in / not authorized”
+- Ensure the app always sends required auth headers/tokens (whatever our app uses now)
+
+--------------------------------------------------------------------
+PART 5 — ADD GUARANTEED DEBUG OUTPUT (TEMPORARY)
+--------------------------------------------------------------------
+
+Client:
+- For every request, log:
+  [API] METHOD URL status
+- On error, log:
+  [API ERROR] URL, message, status, response snippet
+
+Server:
+- For errors, respond with:
+  { error: "...", details: "...", requestId: "..." }
+- Add requestId header and return it in errors
+
+--------------------------------------------------------------------
+PART 6 — ACCEPTANCE TESTS (MUST PASS)
+--------------------------------------------------------------------
+
+After your fixes, confirm:
+
+1) Mobile app can load tasks list.
+2) Creating a task works from Admin UI and shows success feedback.
+3) If an invalid payload is sent, the user sees a specific error message (not “Failed to fetch”).
+4) Health endpoint returns ok/connected.
+5) No HTML responses where JSON is expected.
+6) Works in Expo Go on Android.
+
+--------------------------------------------------------------------
+DELIVERABLES
+============
+- Identify the exact root cause(s) of “Failed to fetch” with evidence (logs/URL).
+- Implement robust client error handling and URL logging.
+- Fix env/config so EXPO_PUBLIC_DOMAIN is always respected.
+- Fix whichever backend route(s) broke task creation and other actions.
+- Provide a short “How to test” checklist at the end.
+
+IMPLEMENT NOW. DO NOT GUESS. VERIFY WITH LOGS END-TO-END.

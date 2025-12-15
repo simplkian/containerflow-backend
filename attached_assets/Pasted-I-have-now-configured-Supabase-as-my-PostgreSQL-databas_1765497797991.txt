@@ -1,0 +1,51 @@
+I have now configured Supabase as my PostgreSQL database and set the DATABASE_URL secret correctly.
+
+Your task now is to finalize the migration and ensure the backend uses ONLY Supabase going forward.
+
+REQUIREMENTS
+============
+
+1. Replace ALL existing database access with Drizzle ORM using process.env.DATABASE_URL.
+   - Remove all legacy database clients or old Replit Postgres adapters.
+   - No fallback, no conditional branches. The ONLY database must be the Supabase PostgreSQL instance.
+   - No Supabase client library in the backend — continue using Drizzle with the pg driver.
+
+2. DATA MIGRATION
+   - Export every record from the old database (users, warehouse containers, customer containers, tasks, scanEvents, activityLogs, fillHistory, customers, etc.).
+   - Insert the exported data into the new Supabase database (via Drizzle).
+   - Ensure ID values and foreign keys remain intact.
+   - Ensure that QR codes remain stable and identical.
+   - Ensure task status, timestamps, relations, history, and scan events are preserved exactly.
+
+   The goal: After migration, the system should behave as if it had always used Supabase.
+
+3. Backend Update
+   - All backend modules must exclusively use the Drizzle instance connected to DATABASE_URL.
+   - Remove any leftover imports from old DB utilities.
+   - Add a log at server start confirming:
+       "Using Supabase PostgreSQL via DATABASE_URL"
+
+4. Verification
+   - After migration, run a health check:
+       GET /api/health
+     It must confirm:
+       {"status":"ok","database":"connected"}
+
+   - Also verify that at least one record from each table can be queried from the new Supabase DB.
+
+5. Cleanup
+   - Delete old DB utility files and unused environment variables.
+   - Ensure no Replit-built-in PostgreSQL client or old connection code remains.
+   - Update documentation/comments so the system clearly states:
+       "Supabase PostgreSQL is the only active database."
+
+GOAL
+====
+After your changes:
+
+- The backend must run 100% on Supabase PostgreSQL.
+- All existing data must be migrated into Supabase.
+- The frontend must continue working exactly the same.
+- No reference to the old database may remain.
+
+Please complete the migration and refactor now.

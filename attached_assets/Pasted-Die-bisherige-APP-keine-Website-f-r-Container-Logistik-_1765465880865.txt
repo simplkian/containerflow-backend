@@ -1,0 +1,53 @@
+Die bisherige APP (keine Website) für Container-Logistik mit Admin/Fahrer, QR-Code-Scans, Containern, Tasks und Aktivitäten ist funktional, aber FEHLERHAFT und UNSAUBER verdrahtet.
+
+KONKRETE PROBLEME:
+- Beim „Leeren“/Reset eines Containers kommt aktuell eine Fehlermeldung.
+- Beim Scannen eines QR-Codes wird zwar ein GET/Scan-API in der Konsole sichtbar, aber die UI zeigt KEINE Live-Datenansicht (nur Konsolen-Logs, kein visuelles Update).
+- Rollen- und Admin-Bereich waren schon problematisch; bitte sicherstellen, dass alles zusammen jetzt konsistent funktioniert.
+
+AUFTRAG:
+Führe eine TECHNISCHE ÜBERARBEITUNG (Refactoring & Bugfixing) der relevanten Backend- und Frontend-Teile durch, mit Fokus auf:
+1. Saubere API-Implementierung für Reset/Leeren und Scans
+2. Korrekte Fehlerbehandlung und Statuscodes
+3. Vollständige Verdrahtung der UI (State-Updates, Live-Ansicht der Daten)
+4. Rollen-Checks (ADMIN/DRIVER) für kritische Aktionen
+5. Klare, sichtbare Nutzer-Feedbacks (Loading, Erfolg, Fehler)
+
+Bitte nicht nur minimal flicken, sondern strukturiert und „best practices“-orientiert überarbeiten.
+
+--------------------------------------------------
+1) BACKEND – END-TO-END PRÜFEN UND FIXEN
+--------------------------------------------------
+
+a) Container-Reset / „Leeren“-Funktion
+
+- Stelle sicher, dass es einen klar definierten Endpoint gibt, z. B.:
+  - `POST /api/containers/:id/reset`
+- Verhalten:
+  - Prüfe, ob der aktuelle User ADMIN ist, sonst `403 Forbidden`.
+  - Prüfe, ob der Container existiert, sonst `404 Not Found`.
+  - Setze `quantity` auf 0 und ggf. andere Felder (z. B. Status).
+  - Erzeuge ActivityLog-Eintrag („Container XYZ wurde von Admin auf Null gesetzt“).
+  - Gib eine konsistente JSON-Response zurück, z. B.:
+    ```json
+    {
+      "container": { ...aktualisierteContainerDaten... },
+      "message": "Container XYZ wurde auf Null zurückgesetzt."
+    }
+    ```
+- Fehler aktuell:
+  - Finde die genaue Ursache der Fehlermeldung (falsche Route, falsche HTTP-Methode, Body-Parsing, Rollenfehler, fehlende ID, DB-Fehler, etc.).
+  - Logge im Backend (Server-Logs) klar, WARUM der Reset fehlschlägt, und behebe diese Ursache.
+  - Stelle sicher, dass KEINE unhandled Exceptions entstehen; stattdessen strukturierte Fehlerantworten mit HTTP-Code und JSON-Fehlermeldung.
+
+b) QR-Code-Scan-API
+
+- Implementiere einen zentralen Scan-Endpoint, z. B.:
+  - `POST /api/scan`
+- Request-Body:
+  ```json
+  {
+    "qrCodeValue": "QR-ABC-123",
+    "scanContext": "WAREHOUSE_INFO" | "TASK_ACCEPT_AT_CUSTOMER" | "TASK_COMPLETE_AT_WAREHOUSE",
+    "taskId": "optional"
+  }

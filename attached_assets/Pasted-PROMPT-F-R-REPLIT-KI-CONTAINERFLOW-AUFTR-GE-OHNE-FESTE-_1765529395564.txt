@@ -1,0 +1,196 @@
+PROMPT FÜR REPLIT KI – CONTAINERFLOW: AUFTRÄGE OHNE FESTE FAHRERZUWEISUNG + ÜBERGABE/WIEGEN + CODE-RESET
+=====================================================================================================
+
+KONTEXT / IST-ZUSTAND
+=====================
+Wir haben die ContainerFlow App (Expo React Native + Node/Express API + PostgreSQL/Supabase via Drizzle).
+Aktuell gibt es Tasks/Aufträge, QR-Scan-Flows, Container-Füllstände und ein Activity-Log. Es gab zuletzt Änderungen rund um Export/Render/Domain. Dabei könnte sich unerwünscht viel im Code verändert haben.
+
+WICHTIGES ZIEL 0 (CODE-RESET)
+=============================
+Bitte stelle zuerst sicher, dass du den Code-Stand verwendest, der VOR den Render-Export/Domain-Änderungen korrekt war.
+- Prüfe Git-History/Commits und identifiziere den letzten stabilen Commit VOR der Render-Migration.
+- Erstelle davon einen Branch (z.B. `restore-pre-render`) oder setze das Projekt exakt auf diesen Stand zurück.
+- Danach implementiere erst die neuen Anforderungen.
+- Wenn keine Git-History vorhanden ist: Nutze Replit “Revisions”/Snapshots (oder vorhandene ZIP/Backups im Projekt) und stelle den stabilen Stand wieder her.
+- Ziel: Wir wollen die funktionierenden Kernfeatures behalten und keinen Domain-/Deployment-Salat im Code.
+
+WICHTIG: Backend-API-BaseURL muss robust sein und darf NICHT Expo-Assets/Bundle verändern.
+- App darf niemals HTML ("text/html") statt JSON von der API bekommen.
+- API_BASE_URL muss sauber /api verwenden und nicht doppelt https:// oder /api bauen.
+
+NEUE ANFORDERUNGEN (FACHLICH)
+=============================
+
+A) AUFTRÄGE NICHT MEHR FEST ZUWEISEN (PULL-PRINZIP)
+---------------------------------------------------
+Bisher: Admin erstellt Task und weist einem Fahrer zu.
+Neu: Admin erstellt Task, ABER ohne assigned_to_user_id (unassigned).
+Jeder Fahrer sieht die Liste offener/unzugewiesener Tasks und kann selbst „annehmen“.
+
+Definition:
+- Task wird standardmäßig als OFFEN/OPEN angelegt (Status: OPEN oder PLANNED – aber UI soll “OFFEN” anzeigen).
+- Ein Fahrer kann einen offenen Task „annehmen“ (claim). Erst dann wird er verantwortlich.
+
+Regeln:
+1) Task Creation (Admin):
+   - Task wird erstellt ohne feste Fahrerzuweisung.
+   - Status = OFFEN.
+2) Task Claim (Driver oder Admin):
+   - Fahrer klickt “Auftrag annehmen” -> server setzt `claimed_by_user_id` (oder `assigned_to_user_id`) = currentUser.id
+   - Status wechselt auf “IN_BEARBEITUNG” (oder ACCEPTED – konsistent definieren)
+   - Activity Log: “Task angenommen von <User>”
+3) Admin darf ebenfalls jeden Task annehmen/ausführen (Admin kann alles).
+
+B) FAHRERWECHSEL / ÜBERGABE IMPLEMENTIEREN
+------------------------------------------
+Es muss möglich sein, dass ein Auftrag während der Durchführung auf einen anderen Mitarbeiter/Fahrer übergeht.
+
+Flow:
+- Task ist angenommen (hat einen verantwortlichen User).
+- Es gibt eine Aktion “Übergabe / Fahrer wechseln”.
+- Der neue Fahrer/Mitarbeiter kann übernommen werden (z.B. über Auswahl in UI oder per Scan/Aktion).
+- Beim Wechsel:
+  - setze `claimed_by_user_id`/`assigned_to_user_id` auf den neuen User
+  - logge Activity: “Task übergeben von A an B”
+  - speichere Timestamp (handover_at)
+
+C) GEWICHT NICHT IM VORAUS – SONDERN BEIM ABLIEFERN/WIEGEN ERFASSEN
+-------------------------------------------------------------------
+Wir entfernen die Annahme “geplantes Gewicht” als Pflicht.
+Stattdessen:
+- Beim Abschluss (Scan am Lager zur Einlagerung/Abgabe) MUSS der übernehmende Mitarbeiter das tatsächliche Gewicht eingeben.
+- Reihenfolge: Gewicht eingeben -> Container scannen -> API bestätigt -> Containerbestand erhöhen -> Task auf ABGESCHLOSSEN.
+
+Regeln:
+- measuredWeight ist Pflicht im ScanContext “TASK_COMPLETE_AT_WAREHOUSE” (oder entsprechender Abschluss-Kontext).
+- Validierung: measuredWeight > 0, plausible upper bound optional.
+- Nach erfolgreichem Abschluss:
+  - container.quantity += measuredWeight
+  - Task.status = COMPLETED
+  - Activity Log:
+    - “Gewicht erfasst: X kg”
+    - “Task abgeschlossen”
+  - Timestamp: completed_at
+
+D) MATERIALIEN VORERST WEG (OPTIONAL)
+------------------------------------
+Materialtyp/Fraktion kann entfallen oder optional sein, da häufig Mischmasch.
+- Entferne Materialpflicht aus Task-Formular/Validierung.
+- Falls Materialfeld existiert, mache es optional und ignoriere es im Flow.
+
+E) AKTIVITÄTSANZEIGE BLEIBT – ÜBERSICHTLICH
+-------------------------------------------
+- Activity Log muss weiterhin vollständig und gut lesbar sein.
+- Jede wesentliche Aktion erzeugt einen Activity-Log-Eintrag:
+  - Task erstellt
+  - Task angenommen (claim)
+  - Fahrerwechsel (handover)
+  - Scan am Kunden / Abholung gestartet (falls vorhanden)
+  - Gewicht erfasst
+  - Task abgeschlossen
+- Admin sieht Aktivitäten pro Task und global.
+
+TECHNISCHE UMSETZUNG
+====================
+
+1) DATENMODELL / SCHEMA (DRIZZLE)
+---------------------------------
+Passe Schema minimal-invasiv an:
+
+- tasks:
+  - `assignedToUserId` kann bleiben, aber ist beim Erstellen NULL.
+  - Alternativ: `claimedByUserId` (empfohlen klarer)
+  - `claimedAt` timestamp
+  - `handoverAt` timestamp (optional)
+  - `weightMeasuredKg` numeric (optional, final gesetzt beim Abschluss)
+
+- scan events:
+  - measuredWeight, measuredWeightUnit (für Abschluss)
+
+2) API-ENDPOINTS
+----------------
+Implementiere/ändere folgende Endpoints:
+
+A) POST /api/tasks
+- Admin-only
+- erstellt Task ohne Fahrerzuweisung (assigned/claimed = null)
+- setzt Status = OPEN/OFFEN
+- Activity Log schreiben
+
+B) POST /api/tasks/:id/claim
+- Driver oder Admin
+- Atomar: nur möglich, wenn Task Status OPEN und noch unclaimed
+- setzt claimedByUserId = currentUser.id, claimedAt = now
+- setzt Status = IN_PROGRESS (oder ACCEPTED, aber konsistent)
+- Activity Log
+
+C) POST /api/tasks/:id/handover
+- Admin oder aktueller Besitzer (optional)
+Body: { newUserId }
+- setzt claimedByUserId = newUserId, handoverAt = now
+- Activity Log
+
+D) POST /api/scan
+- Beim Abschluss-Kontext MUSS measuredWeight gesetzt sein
+- Aktualisiere Container.quantity um measuredWeight
+- Setze Task COMPLETED und timestamps
+- Activity Log
+
+3) UI / MOBILE
+--------------
+A) Task-Liste:
+- Tabs/Filter: OFFEN (unclaimed), IN BEARBEITUNG (claimed), ABGESCHLOSSEN
+- Jeder Fahrer sieht OFFENE Tasks (unassigned) und kann “Annehmen”
+- Admin sieht alle Tasks immer
+
+B) Task-Detail:
+- Anzeige “Zuständig: <Name>” oder “Nicht zugewiesen”
+- Button “Auftrag annehmen” wenn offen
+- Button “Übergabe / Fahrer wechseln” (wenn berechtigt)
+
+C) Abschluss / Scan:
+- Vor dem Scan beim Abschluss: Eingabefeld “Gewicht (kg)”
+- Erst wenn Gewicht valide ist -> Scanner öffnen
+- Nach Scan: Loading + Erfolgspopup mit:
+  - “Auftrag abgeschlossen”
+  - “Gewicht: X kg hinzugefügt”
+  - “Container: <ID>, neuer Stand: Y kg”
+
+D) API Base URL:
+- Setze eine klare Variable: EXPO_PUBLIC_API_BASE
+- Implementiere API_BASE_URL robust:
+  - raw = EXPO_PUBLIC_API_BASE || default render url
+  - ensure protocol
+  - append /api once
+- NIEMALS Expo asset URLs oder Manifest URLs auf Render umbiegen.
+
+QUALITÄT / ROBUSTHEIT
+=====================
+- Saubere Fehlercodes (400/401/403/404/409/500)
+- Bei Claim: wenn Task bereits claimed -> 409 Conflict + Message “Task bereits vergeben”
+- Status-Transitions anpassen:
+  - OPEN -> IN_PROGRESS (Claim)
+  - IN_PROGRESS -> COMPLETED (Abschluss mit Gewicht)
+  - Keine Fehlermeldung “Invalid task transition: PLANNED -> ACCEPTED” mehr
+- Unit Tests oder minimale Integration Tests (optional) für Claim/Handover/Complete
+- Logging: klar, keine stillen Fehler
+
+AKZEPTANZKRITERIEN
+==================
+1) Admin kann Tasks erstellen, ohne Fahrer zuzuweisen. Status = OFFEN.
+2) Fahrer sieht OFFENE Tasks und kann sie annehmen -> Status wechselt korrekt.
+3) Admin sieht alle Tasks aller Fahrer, kann auch selbst annehmen oder übernehmen.
+4) Fahrerwechsel funktioniert (Übergabe protokolliert).
+5) Abschluss erfordert Gewichtsangabe + Scan; Containerbestand erhöht sich; Task ist abgeschlossen; Activity Log zeigt alles.
+6) Activity Log ist übersichtlich und korrekt chronologisch.
+7) App läuft wieder stabil auf dem „pre-render“ Code-Stand und nutzt die aktuelle API sauber (keine HTML-Antworten).
+
+BITTE JETZT UMSETZEN
+====================
+1) Restore pre-render stable state
+2) Implementiere Pull-Task-Flow + Claim/Handover
+3) Implementiere Gewicht nur beim Abschluss (UI + API + DB)
+4) Entferne Materialpflicht
+5) Prüfe API Base URL / JSON responses
+6) End-to-end testen (Tasks erstellen -> claim -> handover -> complete)

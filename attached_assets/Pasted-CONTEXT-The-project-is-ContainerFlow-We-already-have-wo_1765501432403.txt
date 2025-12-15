@@ -1,0 +1,208 @@
+CONTEXT
+=======
+
+The project is "ContainerFlow".  
+We already have working QR scanning, tasks, drivers, admins, warehouse/customer containers, and Supabase as the DB.
+
+CURRENT ISSUE (BUSINESS LOGIC)
+==============================
+
+Right now:
+
+- When scanning, the task is set to some "in progress" state, but the workflow is not fully aligned with the desired behavior.
+- The admin cannot easily see and act on ALL open tasks from all drivers.
+- The quantity is not consistently ADDED to the warehouse container when the task is delivered/completed.
+
+We need to adjust the business logic as follows.
+
+
+PART 1 — ADMIN TASK OVERVIEW & CONTROL
+======================================
+
+Requirement:
+
+1. On the Admin "Tasks" page (web/admin UI), the default view must show:
+   - ALL open tasks from ALL drivers.
+   - "Open" means: any non-final state (e.g. PLANNED, ASSIGNED, ACCEPTED, IN_PROGRESS, PICKED_UP, IN_TRANSIT).
+   - Completed and cancelled tasks should NOT be in this default list, but can remain accessible via optional filters or a separate history view.
+
+2. Admin control:
+   - An ADMIN must be able to open ANY task (regardless of assigned_to_user_id) and perform all actions on it:
+     - Accept
+     - Start/pickup
+     - Deliver
+     - Complete
+   - Do NOT restrict admin by assigned_to_user_id.
+   - For DRIVERS, keep restrictions as usual:
+     - Drivers only see their own tasks.
+     - Drivers can only progress their own tasks.
+   - For ADMIN, the backend should allow status transitions even if the task is assigned to another driver.
+
+Implementation hints:
+
+- Backend:
+  - Ensure `/api/tasks` or the relevant admin tasks endpoint returns all open tasks when currentUser.role === 'ADMIN'.
+  - For drivers, keep `/api/tasks` (or `/api/driver/tasks`) filtered by assigned_to_user_id = currentUser.id.
+
+- Frontend:
+  - Admin "Tasks" page: default filter = "All open tasks".
+  - Optionally provide filters by driver or status, but not required.
+
+
+PART 2 — STARTING THE TASK WHEN SCANNING THE PICKUP CONTAINER
+=============================================================
+
+Requirement:
+
+When the "Abholcontainer" (customer container) is scanned:
+
+- The task should **begin** ("Task beginnt") regardless of whether:
+  - the scanner is the assigned driver, OR
+  - the scanner is an admin.
+
+Concrete behavior:
+
+1. On the first valid scan of the customer container for that task:
+   - Allowed roles:
+     - ADMIN
+     - DRIVER assigned_to_user_id == currentUser.id
+   - If the task is in a "pre-start" state (e.g. PLANNED, ASSIGNED, ACCEPTED):
+     - Transition to the correct "started" state, for example:
+       - PLANNED/ASSIGNED → ACCEPTED (if not yet accepted)
+       - ACCEPTED → PICKED_UP or IN_PROGRESS (you may choose one, but document and apply consistently).
+   - Set appropriate timestamps:
+     - acceptedAt when first accepted
+     - pickedUpAt when the pickup actually starts
+   - Create a scanEvents and activityLogs entry for this action.
+
+2. This logic must be independent of whether the actor is ADMIN or the assigned DRIVER:
+   - If ADMIN scans the pickup container:
+     - The task must start just like when the driver does it.
+   - Ensure the backend does not block this with "unauthorized" or "invalid transition" errors for admins.
+
+3. Make scanning idempotent:
+   - If the task is already in a later phase (e.g. PICKED_UP or IN_PROGRESS), and the same pickup container is scanned again:
+     - Do not throw errors.
+     - Either ignore or just return current state.
+
+
+PART 3 — DELIVERY SCAN: ADD QUANTITY TO WAREHOUSE CONTAINER + COMPLETE TASK
+=============================================================================
+
+Requirement:
+
+When the task is delivered at the warehouse (i.e. the driver or admin scans the Ziel-Container in the warehouse):
+
+- The delivered amount must be **added** to the warehouse container quantity.
+- The task must be marked as **completed**.
+
+Concrete behavior:
+
+1. Identify the quantity to add:
+   - Prefer this order:
+     - If measured weight/volume is provided (e.g. measuredWeight, measuredQuantity) → use that.
+     - Else, use the planned quantity (plannedQuantity).
+   - Validate and use the correct unit field (e.g. kg, t).
+
+2. Update the target warehouse container:
+   - Let `currentQuantity` be the current content (weight/volume).
+   - Let `incomingQuantity` be the delivered amount from the task.
+   - Update:
+     - `currentQuantity = currentQuantity + incomingQuantity`
+   - This must be done in the DB using an additive update (not overwrite), e.g.:
+     - `currentQuantity = currentQuantity + incomingQuantity`
+   - Respect capacity validation:
+     - If `currentQuantity + incomingQuantity > capacity`, reject and return an error:
+       - `{ "error": "Zielcontainer hat nicht genug übriges Volumen für diese Menge." }`
+
+3. Task status update:
+   - On successful delivery scan:
+     - Transition the task status to COMPLETED (or DELIVERED + then COMPLETED, depending on your existing model).
+     - Set:
+       - deliveredAt
+       - completedAt
+     - Write activityLogs entries for delivery and completion.
+
+4. Actors:
+   - Both ADMIN and the assigned DRIVER are allowed to perform the delivery scan.
+   - Role logic:
+     - If currentUser.role === 'ADMIN' → always allowed.
+     - If currentUser.role === 'DRIVER' → only if currentUser.id matches assigned_to_user_id.
+
+5. Scan endpoint behavior:
+   - The endpoint that handles the "delivery scan" (at warehouse) must:
+     - Find the correct task via QR and taskId.
+     - Find the target warehouse container.
+     - Perform the additive update on the container quantity.
+     - Update the task to completed.
+     - Return updated task and container in response, e.g.:
+
+       ```json
+       {
+         "task": { ...updated task, status: "COMPLETED" },
+         "targetContainer": { ...updated container with new currentQuantity }
+       }
+       ```
+
+
+PART 4 — CONSISTENT ROLE LOGIC
+==============================
+
+Summarize role behavior:
+
+- DRIVER:
+  - Sees only own tasks.
+  - Can scan pickup & delivery containers only for own tasks.
+  - Can start, pick up, deliver, and complete only own tasks.
+
+- ADMIN:
+  - Sees all open tasks from all drivers.
+  - Can perform all actions on any task:
+    - accept, start, pick up, deliver, complete.
+  - Can scan pickup or delivery containers for ANY task and advance the task accordingly.
+
+Ensure the backend enforces this, not just the frontend.
+
+
+PART 5 — RETEST SCENARIOS
+=========================
+
+After implementing the above, validate:
+
+1) Admin Task Page:
+   - Admin opens tasks page:
+     - Sees all open tasks (from all drivers).
+   - Admin can click on any task and:
+     - Start it (by scanning the pickup container or via button).
+     - Deliver/complete it (by scanning the warehouse container).
+
+2) Driver Flow:
+   - Driver sees only his/her tasks.
+   - Driver scans customer container:
+     - Task begins (status changes from PLANNED/ASSIGNED → ACCEPTED/PICKED_UP/IN_PROGRESS according to your implementation).
+   - Driver scans warehouse container:
+     - Quantity is added to the warehouse container.
+     - Task status becomes COMPLETED.
+     - Activity logs reflect the full lifecycle.
+
+3) Quantity Check:
+   - If delivered amount exceeds remaining capacity of the target container:
+     - Task must NOT complete.
+     - API returns an explanatory error.
+   - If within capacity:
+     - Container quantity is increased.
+     - Task completes.
+
+Do NOT change:
+
+- Authentication system
+- Existing DB schema (except if a minimal, clearly needed field is missing)
+- QR code generation
+- Supabase configuration
+
+ONLY adjust:
+
+- Task lifecycle transitions and permissions logic as described.
+- Scan handlers for pickup/delivery (start + complete).
+- Warehouse container quantity update (add instead of overwrite).
+- Admin task overview and driver visibility.

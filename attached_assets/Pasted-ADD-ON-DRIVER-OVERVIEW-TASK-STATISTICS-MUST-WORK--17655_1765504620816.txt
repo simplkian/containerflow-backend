@@ -1,0 +1,170 @@
+ADD-ON: DRIVER OVERVIEW + TASK STATISTICS MUST WORK
+===================================================
+
+Please extend the previous "Task Management – Status, Filter & Admin Controls" changes with the following requirements for DRIVER OVERVIEW and TASK STATISTICS.
+
+CONTEXT
+=======
+
+We have:
+- Admin area with dashboard/stats and driver overview
+- Driver accounts with assigned tasks
+- Task lifecycle with multiple states
+- Supabase/Drizzle backend
+
+Currently, the driver overview and task statistics are unreliable or not updating correctly. We need them to be accurate and consistent with the new default status "OFFEN" and the fixed filtering.
+
+
+PART 5 — ADMIN: DRIVER OVERVIEW MUST WORK
+=========================================
+
+Requirement:
+
+In the Admin area there must be a working "Fahrerübersicht" (Driver Overview) that:
+
+1) Lists all drivers with:
+   - Name / email / driverId
+   - Current task counts by category (see Part 6)
+   - Optional: last activity timestamp
+
+2) Allows admin to click a driver and see:
+   - All tasks assigned to that driver
+   - Filterable by status (OFFEN, ACCEPTED, PICKED_UP/IN_PROGRESS, COMPLETED, CANCELLED)
+
+3) Admin must also be able to:
+   - Reassign tasks between drivers
+   - Delete tasks (as requested earlier)
+   - Change task status (existing admin capability)
+
+Implementation rules:
+- Admin can see ALL tasks and ALL drivers.
+- Driver-specific view is a filtered view by assigned_to_user_id.
+- Filtering must work exactly as in the main admin task list.
+
+
+PART 6 — TASK STATISTICS (DASHBOARD COUNTS) MUST BE ACCURATE
+============================================================
+
+We already have an endpoint like:
+GET /api/dashboard/stats
+
+This must be accurate and consistent.
+
+Define the exact metrics and ensure correct counting:
+
+1) openTasks:
+   - Count tasks in status OFFEN
+   - (If you also treat ASSIGNED as open, include it explicitly and document it; but OFFEN must be included at minimum.)
+
+2) inProgressTasks:
+   - Count tasks in active/in-progress states, e.g.:
+     - ACCEPTED
+     - PICKED_UP
+     - IN_TRANSIT
+     - DELIVERED (if used before COMPLETED)
+   - Exclude COMPLETED and CANCELLED.
+
+3) completedTasks:
+   - Count tasks in COMPLETED.
+
+4) cancelledTasks (optional, but recommended):
+   - Count tasks in CANCELLED.
+
+Additionally:
+- Provide a driver-specific stats endpoint (or extend stats endpoint with optional driverId filter):
+  - Example:
+    GET /api/dashboard/stats?driverId=driver-001
+  - Or:
+    GET /api/drivers/:id/stats
+
+This must return the same metrics but restricted to that driver’s assigned tasks.
+
+
+PART 7 — BACKEND IMPLEMENTATION REQUIREMENTS
+============================================
+
+1) Filtering:
+- Ensure task list endpoints support:
+  - ?status=OFFEN (single)
+  - ?status=OFFEN,ACCEPTED (multiple) OR ?statuses[]=OFFEN&statuses[]=ACCEPTED
+  - ?assignedToUserId=... (admin use)
+- Ensure pagination and sorting remain stable (optional but recommended).
+
+2) Permissions:
+- Admin can query all tasks, all drivers, all stats.
+- Driver can only query:
+  - own tasks
+  - own stats
+- Do NOT loosen authentication rules.
+
+3) Consistency:
+- Make sure all counts are computed from the DB (Supabase/Drizzle), not cached incorrectly.
+- Ensure any mutations that change tasks (accept, pickup, deliver, complete, cancel, delete) update stats correctly.
+  - If using React Query on frontend, invalidate the stats queries after each mutation:
+    - dashboard stats
+    - driver stats
+    - task lists
+
+4) Edge cases:
+- If a task has no assigned_to_user_id yet:
+  - It still counts for global admin stats (openTasks).
+  - It should not count for any particular driver stats.
+
+5) Deletion:
+- When admin deletes a task:
+  - It must immediately disappear from:
+    - admin open tasks list
+    - driver task lists (if assigned)
+    - driver overview counts
+    - dashboard stats
+  - Ensure queries and UI invalidate/refetch accordingly.
+
+
+PART 8 — FRONTEND REQUIREMENTS (ADMIN UI)
+=========================================
+
+1) Admin dashboard widgets:
+- Ensure openTasks / inProgressTasks / completedTasks are shown correctly.
+- Ensure they update immediately after:
+  - task creation
+  - task status change
+  - task acceptance
+  - pickup
+  - completion
+  - deletion
+
+2) Driver overview screen:
+- Ensure it displays accurate counts per driver.
+- Clicking a driver shows a driver task list that supports status filters and works reliably.
+
+3) Status filters:
+- Must actually filter tasks (server-side preferred).
+- Must remain consistent across:
+  - admin task list
+  - driver overview task list
+  - driver task list (driver view)
+  - dashboard widgets
+
+
+FINAL ACCEPTANCE CRITERIA
+=========================
+
+After implementing these changes:
+
+- Newly created tasks start as OFFEN and show up in admin "open tasks".
+- Admin sees all OFFEN tasks by default and can filter accurately.
+- Driver overview shows correct counts for each driver.
+- Dashboard stats are correct and reflect real DB state.
+- Stats update immediately after task mutations (create, accept, pickup, complete, delete).
+- Admin can delete tasks and everything updates everywhere.
+- Drivers cannot delete tasks.
+
+Do NOT change:
+- QR code logic
+- Supabase configuration
+- Authentication logic
+
+Only implement:
+- Correct filtering and stats counting for admin and driver overview
+- Correct driver overview UI and stats endpoints usage
+- Query invalidation/refetch so UI updates immediately

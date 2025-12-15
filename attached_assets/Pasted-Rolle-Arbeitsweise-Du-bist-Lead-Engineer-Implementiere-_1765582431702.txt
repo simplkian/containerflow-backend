@@ -1,0 +1,240 @@
+Rolle & Arbeitsweise
+
+Du bist Lead Engineer. Implementiere die folgenden Regeln als core business rules. Keine Zuweisungen, keine privaten Task-Listen. Jeder User (inkl. Admin) sieht jederzeit alle Tasks. Rollen schränken nur Aktionen ein, nicht Sichtbarkeit.
+
+Produktregel 1: Sichtbarkeit (zwingend)
+
+GET /tasks liefert immer alle Tasks, unabhängig vom User.
+
+Filter sind nur UI/Query-Filter (Status, Material, Station, Datum), aber keine Berechtigungsfilter außer Admin-only Stammdaten.
+
+Produktregel 2: Keine Zuweisung, sondern „Claim“ (zwingend)
+
+Tasks werden niemals einem User „zugewiesen“.
+Stattdessen kann jeder User einen Task für den nächsten Schritt claimen (übernehmen) und bei Bedarf wieder freigeben.
+
+Semantik
+
+Claim bedeutet: „Ich führe den nächsten Statusübergang aus“
+
+Release bedeutet: „Ich stelle den Task wieder frei, ohne ihn abzuschließen“
+
+Datenmodell-Anpassungen (zwingend)
+
+Entferne / entwerte harte Zuweisungsfelder wie pickedUpById, takenOverById als „Owner“.
+Ersetze durch ein neutrales Claim-Modell:
+
+Pflichtfelder in Task
+
+claimedById String? (wer hat aktuell den Task „in der Hand“)
+
+claimedAt DateTime?
+
+claimScope enum { STEP, FULL } (MVP: STEP reicht)
+
+status TaskStatus
+
+scheduledFor DateTime? (für geplante Tasks)
+
+source TaskSource { SCHEDULED, MANUAL, ADHOC }
+
+Pflichtmodell TaskClaimHistory (oder über AuditEvent)
+
+actorUserId
+
+action: CLAIM / RELEASE
+
+timestamp
+
+reason optional
+
+Wichtig: Claim darf nicht verhindern, dass andere den Task sehen. Es verhindert nur parallele Bearbeitung.
+
+Claim-/Release-Regeln (zwingend)
+
+Ein Task kann geclaimt werden, wenn:
+
+claimedById IS NULL ODER Claim abgelaufen ist (TTL)
+
+Claim TTL (zwingend): z. B. 30 Minuten konfigurierbar
+
+Wenn ein User claimt und dann nichts macht, kann ein anderer nach TTL claimen
+
+Release:
+
+Der claimer kann jederzeit releasen (Audit schreiben)
+
+Admin kann immer forcieren (Audit schreiben)
+
+Concurrency
+
+Implementiere Claim atomar (DB Transaction):
+
+Update claimedById nur wenn aktuell null oder expired
+
+Sonst 409 Conflict
+
+Produktregel 3: Statuskategorien in UI (zwingend)
+
+Die UI soll Tasks nach Status gruppieren, z. B.:
+
+Offen: OPEN
+
+Unterwegs / Abgeholt: PICKED_UP, IN_TRANSIT
+
+Abgestellt: DROPPED_OFF
+
+In Bearbeitung Entsorgung: TAKEN_OVER, WEIGHED
+
+Abgeschlossen: DISPOSED, CANCELLED
+
+Wichtig: Diese Kategorien sind unabhängig vom User. Jeder sieht alle Kategorien.
+
+Produktregel 4: Jeder kann jeden Task bearbeiten (zwingend)
+
+Jeder User darf grundsätzlich jeden Task claimen und fortführen.
+Rollen sollen nur steuern:
+
+welche Aktionen/Transitionen er ausführen darf (optional)
+oder (wenn du es wirklich offen willst):
+
+alle dürfen alle Transitionen (außer Admin-only Cancel)
+
+➡️ Implementiere als Konfiguration:
+
+ROLE_ENFORCEMENT = STRICT | OPEN
+
+Standard: OPEN (weil du „jeder kann entsorgen“ sagst)
+
+Statusmaschine bleibt bestehen (zwingend)
+OPEN → PICKED_UP → IN_TRANSIT → DROPPED_OFF → TAKEN_OVER → WEIGHED → DISPOSED
+
+
+CANCELLED nur Admin
+
+Gewicht (weightKg) Pflicht bei TAKEN_OVER → WEIGHED oder WEIGHED → DISPOSED (entscheide einen Punkt und dokumentiere; empfohlen: beim Übergang zu WEIGHED)
+
+Wichtige neue Aktionen (API) – zwingend implementieren
+Claim / Release
+
+POST /tasks/:id/claim
+
+POST /tasks/:id/release
+
+Response enthält Task inkl. claimedById/claimedAt.
+
+Transition (nur wenn geclaimt)
+
+POST /tasks/:id/transition
+
+Server prüft:
+
+Task ist von diesem User geclaimt ODER Claim ist leer/expired und wird automatisch beim Transition geclaimt
+
+Transition erlaubt
+
+Pflichtfelder vorhanden (weightKg)
+
+„Abstellen“ als Freigabe-Event (wichtig!)
+
+Wenn ein Task von IN_TRANSIT → DROPPED_OFF wechselt:
+
+setze claimedById = null
+
+Task ist jetzt wieder frei
+
+Audit: DROPPED_OFF + RELEASE
+
+Wenn ein User „Abstellen“ ohne Statuswechsel machen soll:
+
+nutze POST /tasks/:id/release + optional reason="DROPPED_OFF" nur wenn Status bereits DROPPED_OFF
+
+Daily/Scheduled Tasks: Sichtbarkeit & „jeden Tag vorne“
+
+Jeder sieht geplante Tasks genau wie alle anderen (keine Zuweisung)
+
+In der UI zusätzlich ein „Heute/Geplant“ Filter:
+
+„Heute“ zeigt Tasks scheduledFor = heute oder OPEN ohne scheduledFor
+
+„Nächste Tage“ zeigt scheduledFor in Zukunft
+
+WICHTIG: „Jeden Tag vorne“ bedeutet:
+
+Standardliste sortiert:
+
+OPEN (scheduledFor heute zuerst)
+
+DROPPED_OFF (weil liegen geblieben)
+
+IN_TRANSIT/PICKED_UP
+
+Rest
+
+Activity/Audit (zwingend erweitern)
+
+AuditEvent muss zusätzlich loggen:
+
+CLAIM
+
+RELEASE
+
+AUTO_RELEASE_EXPIRED (wenn TTL abläuft und ein anderer claimt)
+
+STATUS_CHANGED
+
+WEIGHT_RECORDED
+
+CONTAINER_EMPTIED
+
+Activity UI zeigt:
+
+wer hat geclaimt
+
+wann freigegeben
+
+wer hat nächsten Schritt gemacht
+
+Analytics (zwingend aktualisieren)
+
+Bei Auswertungen:
+
+„Fahreranalyse“ basiert auf AuditEvent (wer welche Statuswechsel gemacht hat), nicht auf festen Owner-Feldern.
+
+Baue Stats:
+
+Anzahl Statuswechsel pro User/Department
+
+abgeschlossene Tasks pro User (wer DISPOSED ausgelöst hat)
+
+durchschnittliche Zeit zwischen Statuswechseln
+
+Akzeptanzkriterien
+
+Jeder sieht alle Tasks, immer.
+
+Niemand wird automatisch zugewiesen.
+
+Claim verhindert parallele Bearbeitung, aber nicht Sichtbarkeit.
+
+Abstellen führt dazu, dass Task wieder frei ist (Release).
+
+Jeder kann Tasks in jeder Kategorie annehmen/weiterführen (je nach ROLE_ENFORCEMENT).
+
+Activity & Analytics zeigen, wer was wann gemacht hat.
+
+Output
+
+Prisma Migrationen
+
+API Endpoints + Guards
+
+UI: Task Listen nach Kategorien + Claim/Release Buttons + Sortierung
+
+Audit/Activity Updates
+
+Analytics Updates
+
+README_QUEUE.md erklärt Open-Queue Prinzip und TTL
+
+Kein Pseudocode. Vollständiger Code.

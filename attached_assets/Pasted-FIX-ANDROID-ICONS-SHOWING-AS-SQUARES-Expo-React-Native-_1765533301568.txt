@@ -1,0 +1,81 @@
+FIX ANDROID ICONS SHOWING AS SQUARES (Expo / React Native)
+==========================================================
+
+PROBLEM
+=======
+On Android, all icons are rendered as empty squares/boxes instead of the actual icons.
+This typically means the icon font files are not loaded (e.g. Ionicons/MaterialIcons from @expo/vector-icons),
+or we are rendering invalid icon names.
+
+GOAL
+====
+Make sure ALL icons render correctly on Android and iOS in Expo Go and in production builds.
+
+DO NOT change business logic. This is UI/asset/font loading only.
+
+------------------------------------------------------------
+1) AUDIT ICON USAGE
+------------------------------------------------------------
+- Search for icon usage:
+  - @expo/vector-icons (Ionicons, MaterialIcons, etc.)
+  - react-native-vector-icons (if used)
+  - lucide-react-native (if used)
+- Identify which icon families we use and ensure they match installed packages.
+
+If any icon names are invalid for a family, fix them (invalid names can show as squares).
+
+------------------------------------------------------------
+2) ENSURE VECTOR ICON FONTS ARE LOADED BEFORE APP RENDERS
+------------------------------------------------------------
+Implement proper font loading at app startup:
+
+Option A (recommended for Expo):
+- In App.tsx (or root layout), load icon fonts using expo-font
+- Block UI rendering until fonts are loaded (show a minimal loading view)
+
+Example approach:
+- import * as Font from 'expo-font';
+- import { Ionicons, MaterialIcons, ... } from '@expo/vector-icons';
+- await Font.loadAsync({
+    ...Ionicons.font,
+    ...MaterialIcons.font,
+    // add any other families we use
+  });
+
+If we already have a font-loading setup, extend it to include ALL icon fonts.
+
+Ensure we do NOT render icons before fonts are ready.
+
+------------------------------------------------------------
+3) VERIFY PACKAGE VERSIONS AND INSTALLATION
+------------------------------------------------------------
+- Confirm @expo/vector-icons is installed and compatible with Expo SDK 54.
+- Ensure we are not mixing incompatible vector icon libraries.
+
+If needed:
+- run `npm install`
+- clear caches: `npx expo start -c`
+
+------------------------------------------------------------
+4) ANDROID-SPECIFIC CHECKS
+------------------------------------------------------------
+- Verify that expo-font is installed and used correctly.
+- Confirm no custom font override is breaking default icon fonts.
+- Ensure the app does not reference fonts from wrong paths.
+
+------------------------------------------------------------
+5) ACCEPTANCE TESTS
+------------------------------------------------------------
+- In Expo Go on Android: icons must render (no squares)
+- In Expo Go on iOS: icons must render
+- In web: icons must render
+- No “missing font” warnings in console
+- App startup shows loading screen briefly until fonts are ready
+
+DELIVERABLE
+===========
+- Update root app initialization to load vector icon fonts correctly.
+- Fix any invalid icon names.
+- Provide the exact files changed and a short note how to test (expo start -c).
+
+IMPLEMENT NOW.

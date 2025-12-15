@@ -1,0 +1,226 @@
+DESIGN / UI REWORK REQUEST (Expo React Native + Web)
+====================================================
+
+Project: ContainerFlow (waste container logistics app)
+Platforms: iOS + Android (Expo) and Web
+Roles: ADMIN + DRIVER
+Core screens: Login, Task List, Task Detail, Scan (QR), Containers (Warehouse/Customer), Container Detail, Admin Dashboard, Activity History, Forms (Create Task, Assign Driver), etc.
+
+GOAL
+====
+
+I want you to do a full professional UI/UX pass across the entire app:
+
+1) Fix all spacing, typography, alignment, and layout consistency.
+2) Make Light Mode and Dark Mode BOTH look excellent and fully consistent.
+3) Ensure in Dark Mode no screen looks “light” or has white backgrounds unless explicitly intended for small cards.
+4) Ensure all buttons, inputs, and text are readable and pass accessibility contrast.
+5) Ensure responsive layouts so it looks correct on ALL phones (small iPhone, large iPhone, small Android, large Android) and on web.
+6) Produce a coherent design system (colors, typography scale, spacing scale, radii, shadows/elevation, borders) that matches the app context (logistics, industrial, clean, professional).
+
+IMPORTANT: Keep business logic unchanged. This is purely design + UI/UX + theming work.
+Do not remove features, only improve visuals and consistency.
+
+------------------------------------------------------------
+PART A — DESIGN SYSTEM (SINGLE SOURCE OF TRUTH)
+------------------------------------------------------------
+
+1) Create/Refine a central design system in the existing theme file:
+- Use the existing design system location (e.g. client/constants/theme.ts or similar).
+- Define tokens for:
+  - Colors (light and dark palettes)
+  - Typography scale (sizes, weights, line heights)
+  - Spacing scale (4/8/12/16/20/24/32 etc.)
+  - Border radius scale (8/12/16/20)
+  - Shadows/elevation for iOS/Android and subtle web shadows
+  - Standard border color per mode
+  - Standard disabled, pressed, and focus states
+
+2) Choose a professional color palette appropriate for logistics:
+- Neutral background + strong accent color
+- Good “status colors” for task statuses (planned, accepted, in progress, completed, cancelled)
+- Keep it consistent across app
+- Ensure dark palette is truly dark, not washed out
+
+Example direction (you may refine):
+- Accent: deep blue or teal (trust, professional)
+- Success: green
+- Warning: amber
+- Error: red
+- Info: blue
+- Neutrals: slate/graphite in dark mode, light gray in light mode
+
+3) Make sure text contrast is correct:
+- Dark buttons must have light text
+- Light buttons must have dark text
+- Primary buttons must always be readable
+- Use at least WCAG AA contrast where feasible
+
+4) Add “status badges” mapping:
+- TaskStatus → background + text color + border
+- Keep consistent in both modes
+
+Deliverable: theme tokens + status color mapping + usage guidelines (as inline comments).
+
+------------------------------------------------------------
+PART B — GLOBAL DARK/LIGHT MODE CONSISTENCY
+------------------------------------------------------------
+
+1) Audit every screen and component:
+- Make sure backgrounds use theme background colors:
+  - Light mode: light surface & background
+  - Dark mode: dark background and dark surfaces
+- Ensure there are no hardcoded colors:
+  - Remove any `#fff`, `white`, `black`, `gray`, etc. unless they come from theme tokens.
+- Ensure every screen uses the same base background in each mode.
+
+2) Fix the issue where in Dark Mode some pages still look light:
+- Identify which components/screens are forcing white backgrounds or incorrect theme usage.
+- Replace with theme tokens.
+
+3) Ensure the navigation (tab bar, headers, stacks) match the theme:
+- Tab bar background and border
+- Header background, title colors, back button color
+- Status bar style changes per mode (light-content / dark-content)
+
+------------------------------------------------------------
+PART C — LAYOUT, SPACING, AND RESPONSIVENESS (ALL DEVICES)
+------------------------------------------------------------
+
+1) Make a consistent layout grid:
+- Standard screen padding (e.g. 16)
+- Standard vertical spacing between sections (e.g. 12/16/24)
+- Consistent card padding (e.g. 12/16)
+- Align lists, cards, buttons, inputs properly
+
+2) Ensure responsiveness:
+- Use safe area insets (SafeAreaView / useSafeAreaInsets)
+- Avoid fixed widths/heights that break on small phones
+- Use flex layouts and wrapping
+- Ensure long text truncation and proper line breaks
+- Make buttons full width where appropriate, with min height 44–48
+- Ensure list items and cards adapt gracefully
+- Ensure web layout is not cramped:
+  - add max width container on large screens
+  - center content with a reasonable max width (e.g. 900–1200)
+  - keep mobile-first design
+
+3) Typography:
+- Establish consistent heading styles:
+  - Screen title
+  - Section title
+  - Item title
+  - Meta text
+- Ensure readable line heights
+- Ensure “small text” is not too small on phones
+
+------------------------------------------------------------
+PART D — COMPONENT QUALITY (BUTTONS, INPUTS, CARDS, TOASTS)
+------------------------------------------------------------
+
+1) Buttons:
+- Primary / Secondary / Tertiary / Destructive variants
+- Disabled states
+- Loading states (spinner aligned)
+- Pressed state feedback (opacity / subtle scale)
+- Always correct text contrast
+
+2) Inputs:
+- Consistent text color and placeholder color per mode
+- Focus state (border color)
+- Error state (border + helper text)
+- Keyboard handling (KeyboardAvoidingView where needed)
+
+3) Cards & Lists:
+- Consistent card style:
+  - border radius, surface color, border color
+  - subtle shadow/elevation
+- Lists with separators consistent per mode
+
+4) Modals / Bottom sheets:
+- The scan result popup/modal should be visually polished:
+  - card style
+  - clear hierarchy
+  - consistent actions
+  - proper padding and spacing
+- Use subtle animations (Reanimated already available) but keep it smooth and not distracting
+
+5) Toasts / snackbars:
+- Ensure success/error messages are consistent and readable
+- Do not use default alerts unless necessary
+
+------------------------------------------------------------
+PART E — SCREEN-BY-SCREEN POLISH
+------------------------------------------------------------
+
+Please review and polish at least these screens:
+
+- Login / Auth screens
+- Driver Task List
+- Driver Task Detail
+- Scan Screen (camera view + overlay + result modal)
+- Containers list (warehouse/customer)
+- Container detail screen (including “Container leeren” button)
+- Admin Dashboard + stats tiles
+- Admin Task List (all open tasks) + task detail
+- Activity History screen
+- Forms: Create Task / Assign Driver
+
+For each screen:
+- Ensure correct background in both modes
+- Ensure spacing is consistent
+- Ensure components use the design system
+- Ensure status badges are consistent
+- Ensure empty states (no tasks, no containers) look good
+
+------------------------------------------------------------
+PART F — “NO HARD-CODED COLORS” RULE
+------------------------------------------------------------
+
+CRITICAL RULE:
+- Replace hard-coded colors with theme tokens.
+- If a component currently uses inline hardcoded colors, refactor it to consume theme variables.
+- Ensure all icons use theme colors.
+
+------------------------------------------------------------
+PART G — ACCEPTANCE CRITERIA (WHAT I WILL CHECK)
+------------------------------------------------------------
+
+1) In Dark Mode:
+- No screen appears “light” or with white page background
+- Text and buttons have excellent contrast
+- Tab bar and headers match the dark theme
+
+2) In Light Mode:
+- Clean, modern look
+- Comfortable spacing
+- No overly harsh contrast
+
+3) Responsiveness:
+- Looks correct on small and large phones
+- No overlapping text, no cut-off buttons
+- Smooth and consistent across web too
+
+4) Consistency:
+- Same padding, same card style, same typography
+- Same button variants used everywhere
+- Same status colors used everywhere
+
+------------------------------------------------------------
+IMPLEMENTATION NOTES
+------------------------------------------------------------
+
+- Keep all existing navigation and logic.
+- Only change UI/UX: styles, layout, component design, theme usage.
+- Refactor components to use a consistent set of shared UI components if needed (e.g. ThemedView, ThemedText, Button).
+- Ensure nothing breaks for Expo Go on iOS/Android.
+
+DELIVERABLE
+===========
+
+After completing the changes:
+- The app has a cohesive design system
+- All screens match the design system
+- Dark mode is fully correct and consistently dark
+- Light mode is consistent and clean
+- UI is responsive and professional everywhere

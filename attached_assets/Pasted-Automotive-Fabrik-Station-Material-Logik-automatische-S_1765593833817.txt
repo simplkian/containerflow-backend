@@ -1,0 +1,287 @@
+Automotive-Fabrik · Station-Material-Logik · automatische Stellplätze · Open Task Queue · Map · QR · Pflicht-Scan
+
+Rolle
+
+Du bist Lead Architect & Senior Full-Stack Engineer (NestJS + PostgreSQL + Expo React Native).
+Du arbeitest restrukturierend, nicht additiv.
+Du implementierst DB-Logik, Backend, UI, Audit und Migrationen vollständig.
+Kein Pseudocode. Keine Abkürzungen. Keine Annahmen.
+
+0) Zentrales Ziel (Produktentscheidung)
+
+Die App modelliert die physische Realität einer Automotive-Fabrik:
+
+Stationen entscheiden, welche Materialien dort anfallen
+
+Stellplätze (Stände) entstehen automatisch aus Station + Material
+
+Jeder Stellplatz ist ein eindeutiges physisches Objekt (QR, ID)
+
+Mehrere Stellplätze können dasselbe Material haben
+
+Ein Stellplatz gehört immer genau einer Station
+
+Ein Stellplatz darf niemals mehrfach oder logisch wiederverwendet werden
+
+1) Grundstruktur & Eindeutigkeit (nicht verhandelbar)
+Hallen
+
+Eine Halle hat viele Stationen
+
+Hallen sind eindeutig (halls.code)
+
+Stationen
+
+Eine Station gehört immer genau einer Halle
+
+Innerhalb einer Halle darf ein Station-Code nicht doppelt existieren
+
+DB-Constraint:
+
+UNIQUE (hall_id, code)
+
+Stellplätze (Stände)
+
+Ein Stellplatz:
+
+gehört genau einer Station
+
+hat genau ein Material
+
+ist eindeutig (ID + QR)
+
+Mehrere Stellplätze dürfen dasselbe Material haben
+
+Ein Stellplatz existiert nur einmal im gesamten System
+
+DB-Regeln:
+
+stands.id = eindeutige Identität
+stands.identifier UNIQUE
+stands.station_id NOT NULL
+stands.material_id NOT NULL
+
+2) NEUE KERNLOGIK: Station → Materialien → automatische Stellplätze
+Produktregel (neu, zwingend)
+
+Der Admin weist Materialien einer Station zu.
+Die App erzeugt daraus automatisch Stellplätze.
+
+Der Admin erstellt keine Stellplätze manuell, außer im Ausnahmefall.
+
+Neue Beziehung (logisch)
+Station
+ └─ hat Materialien (z. B. Kupfer, Aluminium, Papier)
+     └─ pro Material entstehen automatisch 1..n Stellplätze
+
+Umsetzung (DB & Logik)
+
+Es gibt keine separate „Material-Station“-Tabelle, sondern:
+
+Die Zuordnung wird abgeleitet über die automatisch erzeugten Stellplätze
+
+Regel:
+
+Wenn ein Material einer Station hinzugefügt wird:
+
+prüfe, ob es bereits aktive Stellplätze dieser Station mit diesem Material gibt
+
+wenn nein → erzeuge mindestens einen Stellplatz
+
+Wenn Material entfernt wird:
+
+deaktiviere die zugehörigen Stellplätze (soft delete: is_active=false)
+
+Historie bleibt erhalten
+
+Stellplatz-Identifier (empfohlen)
+
+Slot-basiert, nicht materialbasiert:
+
+ST-<HALL>-<STATION>-S01
+ST-<HALL>-<STATION>-S02
+...
+
+
+Material ist ein Feld, kein Teil der Identität → Material kann sich ändern, QR bleibt gleich.
+
+3) Admin-UI: Zentrale Verknüpfung (nicht nur Einzelscreens)
+Neuer Admin-Bereich: „Automotive Fabrik“
+A) Hallen verwalten
+
+Halle anlegen / bearbeiten
+
+QR generieren / anzeigen
+
+B) Stationen verwalten
+
+Station einer Halle zuordnen
+
+Code muss innerhalb der Halle eindeutig sein
+
+Station verschieben (Halle wechseln)
+
+C) Station → Materialien (neu, zentral)
+
+Ein dedizierter Screen:
+
+Station bearbeiten
+
+Liste: „Materialien an dieser Station“
+
+Aktionen:
+
+Material hinzufügen
+
+Material entfernen
+
+Beim Hinzufügen:
+
+App erzeugt automatisch Stellplätze (Slots)
+
+Anzahl initial z. B. 1 pro Material (konfigurierbar)
+
+Audit schreiben
+
+Beim Entfernen:
+
+Stellplätze werden deaktiviert
+
+Boxen müssen vorher entfernt sein (Validierung)
+
+D) Stellplätze anzeigen (read-only / Expertenmodus)
+
+Liste aller automatisch erzeugten Stellplätze
+
+Anzeige:
+
+Identifier
+
+Material
+
+Station
+
+aktive Boxen
+
+Manuelles Erstellen nur im Expertenmodus (Admin)
+
+E) Boxen verwalten
+
+Boxen sind immer manuell
+
+Box hat QR
+
+Box kann:
+
+einem Stellplatz zugeordnet werden
+
+entfernt werden (stand_id=NULL)
+
+4) Box- & Task-Logik (Pflicht-Scan, Multi-Box)
+Multi-Box pro Stellplatz
+
+Ein Stellplatz kann mehrere Boxen haben
+
+boxes.stand_id ist 1:n
+
+Kein Auto-Replace
+
+Pflicht-Scan (harte Regel)
+
+Kein Task-Statuswechsel ohne Box-Scan.
+
+Server prüft bei jedem Übergang:
+
+Box-QR gescannt
+
+Box existiert
+
+Box gehört zum Task-Stand (boxes.stand_id == task.stand_id)
+
+Ohne Scan → 400 Error
+
+5) Zeitpläne / Daily Tasks (stand-basiert)
+
+Admin wählt:
+
+Halle → Station → Stellplatz
+
+Box wird nie gewählt
+
+Scheduler erzeugt Tasks:
+
+task.stand_id = Stellplatz
+
+task.box_id = NULL
+
+Beim Abholen wird Box per Scan festgelegt
+
+Dedup:
+
+SCHED:<schedule_id>:<YYYY-MM-DD>
+
+6) Map / visuelle Navigation (Pflicht)
+Struktur
+
+OUT-Map → Hallen anklicken
+
+Hallen-Map → Stationen anklicken
+
+Station-Drawer:
+
+Materialien
+
+Stellplätze
+
+offene Tasks
+
+Stand-Modal:
+
+Boxen
+
+Tasks
+
+Aktionen (Claim, Scan, Statuswechsel)
+
+Positionsdaten:
+
+stations.location_meta {x,y}
+
+stands.position_meta {x,y} (optional)
+
+7) QR-System (für alles)
+
+QR für:
+
+Halle
+
+Station
+
+Stellplatz
+
+Box
+
+Lagercontainer
+
+Format:
+
+{ "t": "STAND", "id": "<uuid>" }
+
+
+QR stabil
+
+Admin kann neu generieren (Audit!)
+
+8) Audit & Auswertungen
+
+Alles wird geloggt:
+
+Station-Material geändert
+
+Stellplatz automatisch erzeugt/deaktiviert
+
+Box bewegt
+
+Task abgeholt / abgestellt / entsorgt
+
+Analytics basiert nur auf Events, nicht auf „Besitz“.

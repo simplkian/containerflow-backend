@@ -1,0 +1,169 @@
+Du bist Lead Engineer (NestJS + Postgres + Expo React Native). Implementiere die folgende Logik exakt. Keine Abweichungen, kein Pseudocode.
+
+A) Verbindliche Stammdaten
+
+Die folgenden Station Codes existieren bereits und sind verbindlich:
+
+K13-S01, K13-S02
+
+K18-S01
+
+K19-S01
+
+K25-S01
+
+OUT-S01
+
+Stationen gehören immer genau einer Halle.
+Innerhalb einer Halle darf ein Station-Code nicht doppelt vorkommen.
+DB-Constraint: UNIQUE (hall_id, code).
+
+B) Multi-Box pro Stand (1:n)
+
+Ein Stand (Stellplatz) kann mehrere Boxen enthalten.
+
+boxes.stand_id ist 1:n, KEIN Auto-Replace.
+
+Stand Detail zeigt immer alle Boxen am Stand.
+
+Admin UI:
+
+Stand Detail:
+
+Liste aller Boxen am Stand
+
+Box hinzufügen (Scan oder Auswahl)
+
+Box entfernen (stand_id=NULL)
+
+C) Pflicht-Scan (harte Regel, serverseitig)
+Grundregel
+
+Kein Task-Fortschritt ohne Box-Scan.
+
+Zwingend beim Statuswechsel:
+
+OPEN → PICKED_UP
+
+IN_TRANSIT → DROPPED_OFF
+
+DROPPED_OFF → TAKEN_OVER
+
+TAKEN_OVER → WEIGHED
+
+WEIGHED → DISPOSED
+
+Servervalidierung
+
+Für jeden Transition-Request:
+
+Es muss ein ScanEvent mit BOX-QR vorliegen
+
+Box muss existieren
+
+Beim Abholen:
+
+box.stand_id == task.stand_id
+
+Beim Abstellen:
+
+Stand-Scan + Box-Scan erforderlich
+
+Wenn eine Bedingung fehlt:
+→ 400 Error: „Box-Scan erforderlich“
+
+UI darf keine Umgehung erlauben.
+
+D) Task-Logik (Stand-basiert, Box durch Scan)
+
+Tasks werden immer auf Stand-Ebene erstellt (Zeitplan oder manuell)
+
+Task.box_id darf NULL sein
+
+Die konkrete Box wird erst durch Scan festgelegt
+
+Beim Abholen:
+
+Scan Box
+
+set box.stand_id = NULL
+
+set box.status = IN_TRANSIT
+
+Task → PICKED_UP / IN_TRANSIT
+
+Audit schreiben (boxId, standId, stationId, hallId)
+
+Beim Abstellen:
+
+Scan Stand
+
+Scan Box
+
+set box.stand_id = standId
+
+box.status = AT_STAND
+
+Audit schreiben
+
+E) Zeitpläne (Daily Tasks)
+
+Admin wählt: Halle → Station → Stand → Uhrzeit
+
+Box wird nie gewählt
+
+Scheduler erzeugt Tasks stand-basiert
+
+Dedup über tasks.dedup_key = SCHED:<scheduleId>:<YYYY-MM-DD>
+
+F) Map-Integration (Pflicht)
+
+Map basiert auf Hallen-PNGs
+
+Stationen haben x/y in stations.location_meta
+
+Stände optional position_meta
+
+User Flow:
+
+OUT-Map → Halle anklicken
+
+Hallenmap → Station anklicken
+
+Station-Drawer:
+
+Stände
+
+Boxen am Stand
+
+Offene Tasks
+
+Task direkt aus Map heraus:
+
+claim
+
+scannen
+
+Status wechseln
+
+G) Audit & Nachvollziehbarkeit
+
+Jede Aktion schreibt activity_logs oder task_events:
+
+STATION_CREATED / MOVED
+
+STAND_ASSIGNED / UPDATED
+
+BOX_PLACED / REMOVED / SCANNED
+
+TASK_PICKED_UP / DROPPED / WEIGHED / DISPOSED
+
+Auswertungen basieren ausschließlich auf diesen Events.
+
+Ergebnis
+
+Keine impliziten Annahmen
+
+Kein Raten von Boxen
+
+Physische Realität (Scan) = Systemwahrheit

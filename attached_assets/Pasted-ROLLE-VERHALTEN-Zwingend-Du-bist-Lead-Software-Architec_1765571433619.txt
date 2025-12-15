@@ -1,0 +1,198 @@
+ROLLE & VERHALTEN (Zwingend)
+
+Du bist Lead Software Architect & Senior Product Engineer.
+Du arbeitest nicht additiv, sondern restrukturierend.
+
+⚠️ WICHTIG:
+
+Diese App darf nicht als Erweiterung einer bestehenden „Task-/QR-App“ betrachtet werden.
+
+Die bestehende Logik ist fachlich falsch für den neuen Use Case und muss ersetzt, nicht ergänzt werden.
+
+Wenn bestehender Code:
+
+der neuen Logik widerspricht → ersetzen
+
+nur teilweise passt → umbauen
+
+irrelevant ist → entfernen
+
+❌ Nicht erlaubt:
+
+neue Unter-Tabs als Workaround
+
+parallele Logiken (alt + neu)
+
+„wir lassen das Alte und bauen neu daneben“
+
+✅ Erwartet:
+
+saubere fachliche Neudefinition
+
+klare Trennung von Alt-Logik und neuer Kernlogik
+
+explizite Migration (falls nötig)
+
+🔁 NEUE PRODUKTDEFINITION (ersetzt alles Vorherige)
+
+Diese App ist ausschließlich eine:
+
+QR-basierte Materialfluss- & Container-Workflow-App für ein Automotive-Werk
+
+Alle bisherigen Features, Screens und Logiken sind nur dann gültig, wenn sie direkt diesem Zweck dienen.
+
+🧠 FACHLICHE GRUNDREGELN (NICHT VERHANDELBAR)
+
+Die App dreht sich um Boxen (Behälter) und ihre Bewegung
+
+Material ist NICHT an der Box gespeichert
+
+Material ergibt sich ausschließlich aus dem Ständer
+
+Boxen sind mobil und wechseln Stationen
+
+QR-Scans sind die einzige Quelle der Wahrheit
+
+Tasks sind Prozessinstanzen, keine generischen „To-dos“
+
+🗑️ WAS ENTFERNT / ERSETZT WERDEN MUSS
+
+Du musst aktiv prüfen und entfernen/ersetzen:
+
+alte Task-Logiken ohne Bezug zu Box → Ständer → Material
+
+alte „Admin-only“-Workflows
+
+alte QR-Logiken, die nicht kontextuell auswerten
+
+jede Logik, die Material direkt an der Box speichert
+
+jede Logik, die Aufgaben unabhängig vom physischen Objekt erzeugt
+
+⚠️ Wenn du alte Logik weiterverwendest, erkläre explizit warum sie kompatibel ist.
+
+🧩 NEUE KERNLOGIK (ERSATZ)
+🔹 Entitäten (Pflicht)
+
+Hall
+
+Station
+
+Stand (enthält materialId + dailyFull Flag)
+
+Material
+
+Box
+
+WarehouseContainer
+
+Task (Workflow-Instanz)
+
+TaskEvent / AuditEvent
+
+User
+
+🔁 TASK-LOGIK (ERSATZT ALLES BISHERIGE)
+Task-Typen
+Typ A – Täglich volle Behälter
+
+Bestimmte Ständer sind dailyFull = true
+
+Für diese wird jeden Kalendertag automatisch ein Task erzeugt
+
+Diese Tasks sind immer sichtbar (Status OPEN)
+
+Typ B – Ad-hoc volle Behälter
+
+Entstehen:
+
+manuell durch Admin
+
+oder durch Scan + Aktion „Behälter voll“
+
+Statusmaschine (Zwingend)
+OPEN
+→ PICKED_UP
+→ IN_TRANSIT
+→ DROPPED_OFF
+→ TAKEN_OVER
+→ WEIGHED
+→ DISPOSED
+
+
+Keine Abweichungen
+
+Keine Abkürzungen
+
+Jede Transition serverseitig prüfen
+
+Jede Transition erzeugt ein Audit-Event
+
+📱 MOBILE UX – KOMPLETTER NEUAUFBAU
+Prinzip
+
+Scan-first
+
+Keine generischen Task-Formulare
+
+Aktionen ergeben sich nur aus Kontext + Rolle
+
+Ablauf
+
+Nutzer scannt QR (Box / Station / Ständer / Container)
+
+System erkennt:
+
+aktueller Standort der Box
+
+zugehörigen Ständer → Material
+
+existierenden Task (falls vorhanden)
+
+App zeigt genau eine sinnvolle Aktion
+
+⚙️ TECHNISCHE VORGABEN (Pflicht)
+
+Backend: Node.js + NestJS
+
+DB: PostgreSQL + Prisma
+
+Mobile: React Native (Expo)
+
+Auth: JWT
+
+Validation: zod
+
+Online-only
+
+Kein paralleles Alt-/Neu-System
+
+🔒 HARTE REGELN (nicht umgehen)
+
+Eine Box darf nie zwei aktive Tasks haben
+
+Ohne Gewicht → kein Abschluss
+
+Jeder Scan & Statuswechsel → Audit
+
+Zielcontainer muss materialkompatibel sein
+
+🧪 ERWARTETER OUTPUT
+
+Fachliche Neudefinition der App (kurz, präzise)
+
+Liste: Was wird gelöscht / ersetzt
+
+Neues Datenmodell (Prisma)
+
+Neue Task-Services & Transition Guards
+
+Anpassung bestehender Screens ODER Neuentwurf
+
+Klare Hinweise, wo bestehender Code migriert wird
+
+Lauffähiger Code, kein Pseudocode
+
+🔴 ABSCHLUSSREGEL
+
+Wenn du dir unsicher bist, ob etwas ergänzt oder ersetzt werden soll, entscheide dich IMMER für „ersetzen“ und erkläre die Entscheidung.

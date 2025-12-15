@@ -1,0 +1,25 @@
+entity_type,map_hall_code,hall_code,station_code,stand_identifier,x,y,label
+HALL,OUT,K70,,,0.25,0.37,Bau K70
+HALL,OUT,K25,,,0.44,0.23,Bau K25
+HALL,OUT,K19,,,0.45,0.34,Bau K19
+HALL,OUT,K18,,,0.56,0.28,Bau K18
+HALL,OUT,K30,,,0.34,0.6,Bau K30
+HALL,OUT,K16,,,0.73,0.33,Bau K16
+HALL,OUT,K13,,,0.81,0.76,Bau K13
+STATION,K13,K13,K13-S01,,0.11,0.46,Cluster 338-340 (links)
+STATION,K18,K18,K18-S01,,0.54,0.22,Cluster 712/623/615 (oben)
+STATION,K18,K18,K18-S02,,0.76,0.52,Cluster 646/647/653 (rechts)
+STATION,K18,K18,K18-S03,,0.79,0.86,Cluster 655/656 (unten rechts)
+STATION,K18,K18,K18-S04,,0.32,0.75,Cluster 680-683 (links unten)
+STATION,K19,K19,K19-S01,,0.21,0.46,Cluster 625-627 (links)
+STATION,K19,K19,K19-S02,,0.36,0.17,Cluster 701/702/710/711 (oben links)
+STATION,K19,K19,K19-S03,,0.67,0.14,Cluster 604/605/606/612 (oben rechts)
+STATION,K19,K19,K19-S04,,0.49,0.48,Cluster 201/62/616/617 (Mitte)
+STATION,K19,K19,K19-S05,,0.37,0.86,Cluster 629-633 (unten Mitte)
+STATION,K19,K19,K19-S06,,0.71,0.8,Cluster 608-611/602/609/610 (unten rechts)
+STATION,K25,K25,K25-S01,,0.1,0.65,Cluster 36/37/47 (links unten)
+STATION,K25,K25,K25-S02,,0.19,0.52,Cluster 706 (links Mitte)
+STATION,K25,K25,K25-S03,,0.53,0.66,Cluster 67/68/69/660 (unten Mitte)
+STATION,K25,K25,K25-S04,,0.71,0.62,Cluster 225-228/224 (rechts)
+STATION,K25,K25,K25-S05,,0.81,0.17,Cluster 41/663 (oben rechts)
+STATION,K25,K25,K25-S06,,0.07,0.35,Cluster 672/714 (oben links)

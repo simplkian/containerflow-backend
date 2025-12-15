@@ -1,0 +1,694 @@
+# Flutter Container-Management App - Vollständiger Entwicklungs-Prompt
+
+## Projekt-Übersicht
+
+Entwickle eine professionelle Mobile App (iOS & Android) mit Flutter für Container-Abholung und Müll-Management. Die App dient einem Entsorgungsunternehmen zur Verwaltung von Kundencontainern und eigenen Lagercontainern mit vollständiger Zeitstempel-Protokollierung.
+
+-----
+
+## Technologie-Stack
+
+- **Framework:** Flutter (neueste stabile Version)
+- **Sprache:** Dart
+- **State Management:** Provider oder Riverpod
+- **Backend/Datenbank:** Firebase (Firestore für Daten, Authentication für Login)
+- **Push-Notifications:** Firebase Cloud Messaging (FCM)
+- **QR/Barcode Scanner:** `mobile_scanner` Package
+- **Lokale Zeitstempel:** `intl` Package für DateTime-Formatierung
+
+-----
+
+## Benutzerrollen & Authentifizierung
+
+### 1. Login & Registrierung
+
+- **Login-Screen:**
+  - Email/Username + Passwort
+  - “Anmelden” Button (groß, abgerundet, Orange)
+  - Link “Noch kein Account?” führt zu Info, dass nur Admin registrieren kann
+- **Registrierung:**
+  - Nur über Admin-Dashboard möglich
+  - Admin erstellt Accounts mit Rolle (Fahrer/Admin)
+  - KEINE direkten Datenbank-Zugriffe für normale User
+
+### 2. Rollen-System
+
+- **Fahrer:** Zugriff auf Aufgaben, Scanner, Container-Übersicht
+- **Admin:** Zusätzlich Dashboard, Aufgaben verteilen, Container bearbeiten
+
+-----
+
+## App-Struktur & Navigation
+
+### Bottom Navigation Bar (für beide Rollen)
+
+1. **Home** (Aufgabenübersicht) - Icon: Liste
+1. **Scanner** (QR/Barcode) - Icon: QR-Code
+1. **Container** (Übersicht) - Icon: Box/Container
+1. **Profil/Admin** (je nach Rolle) - Icon: Person oder Dashboard
+
+-----
+
+## Feature-Spezifikationen
+
+### FAHRER-ANSICHT
+
+#### 1. Aufgaben-Tab (Home)
+
+**Oberhalb der Liste:**
+
+- **Top-Filter-Leiste:**
+  - Chips/Buttons: “Meine Aufgaben” (Default), “Heute”, “Alle”
+  - Status-Filter: “Offen”, “Unterwegs”, “Erledigt”, “Storniert”
+  - Icons mit Farben: Offen (Grau), Unterwegs (Blau), Erledigt (Grün), Storniert (Rot)
+
+**Aufgaben-Liste:**
+
+- Jede Aufgabe als Card mit:
+  - Container-Nummer (z.B. “A-30”)
+  - Standort (z.B. “Halle 3”)
+  - Uhrzeit/Zeitfenster
+  - Material-Art (optional, wenn vorhanden)
+  - Status-Badge
+  - “Details anzeigen” Button
+
+**Aufgaben-Details-Screen:**
+
+- Vollständige Container-Info
+- Materialien & geschätzte Menge
+- Abhol-Anweisungen
+- “Navigation starten” Button (öffnet Maps)
+- “QR-Code scannen” Button (öffnet Scanner-Tab)
+
+#### 2. Scanner-Tab
+
+**Funktionsweise:**
+
+1. **Beim Abholen (Kunde):**
+- QR-Code am Kunden-Container scannen
+- **Pop-up zeigt:**
+  - Container-Nummer
+  - Aktueller Inhalt & Menge
+  - Material-Art
+- Bestätigung: “Abholung bestätigen”
+- **Aktion:**
+  - Zeitstempel speichern (Datum, Uhrzeit, GPS-Koordinaten)
+  - Status → “Unterwegs”
+  - Push-Nachricht an Admin
+1. **Beim Abgeben (eigenes Lager):**
+- QR-Code am eigenen Container scannen
+- **App prüft automatisch:**
+  - Passendes Material?
+  - Genug Kapazität verfügbar?
+- **Wenn JA:**
+  - Pop-up: “Abgabe in Container X-Y möglich”
+  - Bestätigung: “Abgeben”
+  - **Aktion:**
+    - Zeitstempel speichern
+    - Menge zu eigenem Container addieren
+    - Status → “Erledigt”
+    - Push-Nachricht an Admin
+- **Wenn NEIN:**
+  - Warnung: “Kein Container mit genug Kapazität verfügbar”
+  - Option: “Aufgabe stornieren” mit Grund-Angabe
+
+**Scanner-UI:**
+
+- Vollbild-Kamera-View
+- Rahmen/Gitternetz zur QR-Orientierung
+- Taschenlampe-Button
+- Abbrechen-Button
+
+#### 3. Container-Tab
+
+**Zwei Untertabs:**
+
+**A) Kunden-Container:**
+
+- Liste aller Container beim Kunden
+- Filterbar nach Standort, Material
+- Jeder Container zeigt:
+  - Container-ID
+  - Standort (Halle, Raum)
+  - Material-Art
+  - Letzte Leerung (Datum)
+  - Status (Offen/Unterwegs)
+
+**B) Eigene Container (Lager):**
+
+- Liste aller Firmen-Container im Lager
+- **Für jeden Container:**
+  - Container-ID & Standort
+  - Material-Typ
+  - **Füllstands-Tracker:**
+    - Progress Bar mit Prozent (z.B. 65%)
+    - Aktuelle Menge in kg
+    - Max. Kapazität in kg
+  - Farb-Kodierung:
+    - 0-50%: Grün
+    - 51-79%: Gelb
+    - 80-100%: Orange/Rot
+  - Bei >= 80%: Warnsymbol + Badge “Bald voll”
+
+**Detail-Ansicht eines Containers:**
+
+- Verlauf der letzten Befüllungen (Datum, Menge)
+- Chart/Diagramm des Füllstands über Zeit
+- QR-Code zum Container (anzeigen für erneutes Scannen)
+
+-----
+
+### ADMIN-ANSICHT
+
+#### Admin-Dashboard (statt Profil-Tab)
+
+**Übersichts-Cards:**
+
+1. **Heute:**
+- Anzahl offener Aufgaben
+- Anzahl erledigter Aufgaben
+- Anzahl Fahrer aktiv
+1. **Container-Status:**
+- Anzahl Container >= 80% voll
+- Gesamtkapazität verfügbar
+- Kritische Container (>90%)
+1. **Quick-Actions:**
+- “Neue Aufgabe erstellen”
+- “Fahrer verwalten”
+- “Container bearbeiten”
+
+**Detailansichten:**
+
+**A) Aufgaben-Verwaltung:**
+
+- Alle Aufgaben (filterbar nach Datum, Fahrer, Status)
+- **Neue Aufgabe erstellen:**
+  - Container auswählen (Dropdown aus Kunden-Containern)
+  - Fahrer zuweisen (Dropdown mit verfügbaren Fahrern)
+  - Zeitfenster festlegen
+  - Priorität setzen
+  - Notizen hinzufügen
+  - Speichern → Push an zugewiesenen Fahrer
+
+**B) Container-Verwaltung:**
+
+- Liste ALLER Container (Kunden + Eigene)
+- **Bearbeitungs-Möglichkeiten:**
+  - Material-Typ ändern
+  - Kapazität anpassen
+  - Standort ändern
+  - Container manuell auf “geleert” setzen
+    - Bei eigenen Containern: Füllstand auf 0 zurücksetzen
+    - Zeitstempel der Leerung eintragen
+  - Container hinzufügen/archivieren
+
+**C) Fahrer-Verwaltung:**
+
+- Liste aller Fahrer-Accounts
+- Account erstellen: Email, Name, Passwort generieren
+- Account deaktivieren/löschen
+- Aktivitäts-Log pro Fahrer (letzte Aufgaben, Zeitstempel)
+
+**D) Verlaufs-Protokoll:**
+
+- Vollständige Zeitstempel-Historie
+- Filterbar nach:
+  - Datum/Zeitraum
+  - Fahrer
+  - Container
+  - Aktion (Abholung/Abgabe)
+- Exportierbar als CSV/PDF für Compliance
+
+-----
+
+## Push-Benachrichtigungen
+
+### Trigger für Push-Notifications:
+
+1. **Bei Abholung (Zeitstempel 1):**
+- An Admin: “Fahrer [Name] hat Container [ID] abgeholt”
+1. **Bei Abgabe (Zeitstempel 2):**
+- An Admin: “Container [ID] wurde in [Lager-Container] abgegeben”
+1. **Bei 80% Füllstand:**
+- An Admin + alle Fahrer: “Container [ID] ist zu 80% voll - Leerung planen”
+1. **Bei Aufgaben-Zuweisung:**
+- An zugewiesenen Fahrer: “Neue Aufgabe: Container [ID] abholen”
+1. **Bei Stornierung:**
+- An Admin: “Aufgabe [ID] wurde storniert - Grund: […]”
+
+-----
+
+## Design-System & UI/UX
+
+### Farbschema (Industrietauglich)
+
+**Primärfarben:**
+
+- **Dunkelblau:** `#1E3A5F` (Header, Navigation, primäre Buttons)
+- **Kräftiges Orange:** `#FF6B35` (CTA-Buttons, Icons, Akzente)
+
+**Hintergrund & Text:**
+
+- **Hellgrau:** `#F5F5F5` (App-Hintergrund)
+- **Weiß:** `#FFFFFF` (Cards, Dialoge)
+- **Dunkelgrau:** `#333333` (Haupt-Text)
+- **Mittelgrau:** `#757575` (Sekundär-Text)
+
+**Status-Farben:**
+
+- **Grün (Erledigt/OK):** `#4CAF50`
+- **Gelb/Orange (Warnung):** `#FFA726`
+- **Rot (Dringend/Fehler):** `#E53935`
+- **Blau (Unterwegs):** `#42A5F5`
+- **Grau (Offen):** `#9E9E9E`
+
+### UI-Komponenten
+
+**Buttons:**
+
+- Höhe: min. 48dp (gut klickbar mit Handschuhen)
+- Border-Radius: 8-12dp (abgerundet)
+- Primär-Button: Orange mit weißem Text
+- Sekundär-Button: Transparent mit blauem Border
+- Text: Bold, mindestens 16sp
+
+**Cards:**
+
+- Weißer Hintergrund
+- Elevation: 2-4dp
+- Border-Radius: 12dp
+- Padding: 16dp
+- Trennung durch 1dp graue Linie oder Schatten
+
+**Icons:**
+
+- Material Icons oder Lucide Icons
+- Größe: 24dp Standard, 32dp für wichtige Actions
+- Farbe: Dunkelblau oder Orange je nach Kontext
+- Minimalistisch & klar erkennbar
+
+**Typography:**
+
+- **Headline:** Roboto Bold, 24sp
+- **Title:** Roboto Medium, 20sp
+- **Body:** Roboto Regular, 16sp
+- **Caption:** Roboto Regular, 14sp, Grau
+- Immer hoher Kontrast für Lesbarkeit im Außenbereich
+
+**Bottom Navigation Bar:**
+
+- Höhe: 60dp
+- Hintergrund: Weiß mit leichtem Schatten nach oben
+- Aktives Item: Orange Icon + Text
+- Inaktiv: Grau Icon + Text
+- Icons: 24dp
+
+### Accessibility (WCAG-konform)
+
+- Kontrastverhältnis Text/Hintergrund: mind. 4.5:1
+- Interaktive Elemente: mind. 44x44dp Touch-Target
+- Screen-Reader-Support für alle wichtigen Elemente
+- Große Schrift-Option unterstützen
+
+-----
+
+## Datenmodell (Firebase Firestore)
+
+### Collections:
+
+#### 1. `users`
+
+```dart
+{
+  "id": "user123",
+  "email": "fahrer1@firma.de",
+  "name": "Max Müller",
+  "role": "fahrer", // oder "admin"
+  "createdAt": Timestamp,
+  "isActive": true
+}
+```
+
+#### 2. `tasks`
+
+```dart
+{
+  "id": "task456",
+  "containerID": "A-30",
+  "customerLocation": "Halle 3",
+  "assignedTo": "user123", // Fahrer-ID
+  "status": "offen", // offen, unterwegs, erledigt, storniert
+  "scheduledTime": Timestamp,
+  "createdBy": "adminUser789",
+  "materialType": "Plastik",
+  "estimatedAmount": 50, // kg
+  "timestamps": {
+    "pickup": Timestamp (oder null),
+    "delivery": Timestamp (oder null)
+  },
+  "pickupLocation": {
+    "lat": 52.520008,
+    "lng": 13.404954
+  },
+  "deliveryContainerID": "L-05" (oder null),
+  "cancellationReason": "" (oder null)
+}
+```
+
+#### 3. `containers_customer`
+
+```dart
+{
+  "id": "A-30",
+  "customerName": "Firma XY",
+  "location": "Halle 3",
+  "materialType": "Plastik",
+  "lastEmptied": Timestamp,
+  "qrCode": "QR-A30-HASH"
+}
+```
+
+#### 4. `containers_own`
+
+```dart
+{
+  "id": "L-05",
+  "location": "Lager - Bereich B",
+  "materialType": "Plastik",
+  "currentAmount": 1200, // kg
+  "maxCapacity": 2000, // kg
+  "fillPercentage": 60,
+  "lastEmptied": Timestamp,
+  "qrCode": "QR-L05-HASH",
+  "history": [
+    {
+      "date": Timestamp,
+      "amountAdded": 50,
+      "fromTask": "task456"
+    }
+  ]
+}
+```
+
+#### 5. `activity_log`
+
+```dart
+{
+  "id": "log789",
+  "timestamp": Timestamp,
+  "userID": "user123",
+  "action": "pickup", // pickup, delivery, manual_edit, emptied
+  "taskID": "task456",
+  "containerID": "A-30",
+  "location": {
+    "lat": 52.520008,
+    "lng": 13.404954
+  },
+  "details": "Container abgeholt"
+}
+```
+
+-----
+
+## Funktions-Logik
+
+### QR-Code Scan Workflow
+
+**Schritt 1: Scan am Kunden-Container**
+
+```dart
+// Pseudo-Code
+onQRScanned(qrData) {
+  // Parse QR-Code
+  containerID = extractContainerID(qrData);
+  
+  // Hole Container-Daten aus Firestore
+  container = await getCustomerContainer(containerID);
+  
+  // Zeige Pop-up mit Daten
+  showDialog(
+    title: "Container $containerID",
+    content: "Material: ${container.materialType}
+Geschätzt: ${container.estimatedAmount} kg",
+    actions: ["Abholung bestätigen", "Abbrechen"]
+  );
+  
+  // Bei Bestätigung:
+  if (confirmed) {
+    // Zeitstempel speichern
+    task.timestamps.pickup = DateTime.now();
+    task.pickupLocation = await getCurrentLocation();
+    task.status = "unterwegs";
+    
+    // Update in Firestore
+    await updateTask(task);
+    
+    // Activity Log
+    await logActivity(
+      action: "pickup",
+      taskID: task.id,
+      containerID: containerID
+    );
+    
+    // Push-Nachricht an Admin
+    sendPushToAdmin("Fahrer ${user.name} hat $containerID abgeholt");
+  }
+}
+```
+
+**Schritt 2: Scan am Lager-Container**
+
+```dart
+onQRScannedAtWarehouse(qrData) {
+  containerID = extractContainerID(qrData);
+  ownContainer = await getOwnContainer(containerID);
+  
+  // Prüfe Material-Match
+  if (ownContainer.materialType != task.materialType) {
+    showError("Falsches Material! Container ist für ${ownContainer.materialType}");
+    return;
+  }
+  
+  // Prüfe Kapazität
+  availableSpace = ownContainer.maxCapacity - ownContainer.currentAmount;
+  
+  if (availableSpace >= task.estimatedAmount) {
+    showDialog(
+      title: "Abgabe möglich",
+      content: "Container $containerID hat genug Kapazität.
+Verfügbar: $availableSpace kg",
+      actions: ["Abgeben", "Abbrechen"]
+    );
+    
+    if (confirmed) {
+      // Update Container-Füllstand
+      ownContainer.currentAmount += task.estimatedAmount;
+      ownContainer.fillPercentage = (ownContainer.currentAmount / ownContainer.maxCapacity) * 100;
+      ownContainer.history.add({
+        date: DateTime.now(),
+        amountAdded: task.estimatedAmount,
+        fromTask: task.id
+      });
+      
+      // Update Task
+      task.timestamps.delivery = DateTime.now();
+      task.status = "erledigt";
+      task.deliveryContainerID = containerID;
+      
+      await updateOwnContainer(ownContainer);
+      await updateTask(task);
+      await logActivity(action: "delivery", ...);
+      
+      sendPushToAdmin("Container ${task.containerID} wurde abgegeben");
+      
+      // Prüfe Füllstand
+      if (ownContainer.fillPercentage >= 80) {
+        sendPushToAll("Container $containerID ist zu ${ownContainer.fillPercentage}% voll!");
+      }
+    }
+  } else {
+    showDialog(
+      title: "Keine Kapazität",
+      content: "Container $containerID ist zu voll. Nur noch $availableSpace kg frei.",
+      actions: ["Aufgabe stornieren", "Anderen Container suchen"]
+    );
+    
+    if (cancelled) {
+      task.status = "storniert";
+      task.cancellationReason = "Keine Kapazität verfügbar";
+      await updateTask(task);
+      sendPushToAdmin("Aufgabe ${task.id} storniert: Keine Kapazität");
+    }
+  }
+}
+```
+
+### Container-Leerung (Admin)
+
+```dart
+onEmptyContainer(containerID) {
+  container = await getOwnContainer(containerID);
+  
+  showDialog(
+    title: "Container leeren?",
+    content: "Aktuell: ${container.currentAmount} kg
+Nach Leerung: 0 kg",
+    actions: ["Bestätigen", "Abbrechen"]
+  );
+  
+  if (confirmed) {
+    container.currentAmount = 0;
+    container.fillPercentage = 0;
+    container.lastEmptied = DateTime.now();
+    
+    await updateOwnContainer(container);
+    await logActivity(
+      action: "emptied",
+      containerID: containerID,
+      details: "Manuell durch Admin geleert"
+    );
+  }
+}
+```
+
+-----
+
+## Zusätzliche Features & Nice-to-Haves
+
+### 1. Offline-Modus
+
+- Lokales Caching mit `sqflite` oder `hive`
+- QR-Scans auch offline möglich
+- Sync sobald Internetverbindung wieder da ist
+
+### 2. GPS-Tracking (optional)
+
+- Echtzeit-Position der Fahrer auf Admin-Dashboard-Karte
+- Nur während aktiver Aufgabe
+
+### 3. Foto-Upload
+
+- Fahrer kann Foto vom Container machen beim Abholen/Abgeben
+- Speichern in Firebase Storage, verknüpft mit Task
+
+### 4. Berichte & Export
+
+- Admin kann Monatsberichte generieren
+- CSV/PDF-Export für Buchhaltung
+
+### 5. Multi-Language Support
+
+- Deutsch (Standard)
+- Englisch, Türkisch (optional)
+
+-----
+
+## Implementierungs-Schritte
+
+### Phase 1: Setup & Authentifizierung
+
+1. Flutter-Projekt aufsetzen
+1. Firebase konfigurieren (iOS & Android)
+1. Login/Register-Screens mit Firebase Auth
+1. Rollen-System implementieren
+
+### Phase 2: Fahrer-Features
+
+1. Bottom Navigation
+1. Aufgaben-Liste mit Filtern
+1. QR-Scanner integrieren
+1. Container-Übersicht (beide Tabs)
+1. Zeitstempel-Logik
+
+### Phase 3: Admin-Features
+
+1. Admin-Dashboard
+1. Aufgaben erstellen & zuweisen
+1. Container-Verwaltung
+1. Fahrer-Accounts verwalten
+1. Activity Log
+
+### Phase 4: Push-Notifications
+
+1. FCM einrichten
+1. Push-Trigger implementieren
+1. Notification-Handling in App
+
+### Phase 5: Testing & Polish
+
+1. UI/UX-Feinschliff
+1. End-to-End Tests
+1. Performance-Optimierung
+1. Beta-Testing mit echten Fahrern
+
+-----
+
+## Packages (pub.dev)
+
+Essentiell:
+
+- `firebase_core` - Firebase-Integration
+- `firebase_auth` - Authentifizierung
+- `cloud_firestore` - Datenbank
+- `firebase_messaging` - Push-Notifications
+- `mobile_scanner` - QR/Barcode-Scanner
+- `provider` oder `riverpod` - State Management
+- `intl` - Datum/Zeit-Formatierung
+- `geolocator` - GPS-Koordinaten
+- `permission_handler` - Kamera/GPS-Berechtigungen
+
+Optional:
+
+- `flutter_local_notifications` - Lokale Notifications
+- `sqflite` - Lokale Datenbank (Offline)
+- `image_picker` - Foto-Upload
+- `pdf` - PDF-Generierung
+- `csv` - CSV-Export
+- `google_maps_flutter` - Karten-Ansicht
+
+-----
+
+## Sicherheits-Anforderungen
+
+1. **Firestore Rules:**
+- Fahrer können nur ihre eigenen Tasks lesen/updaten
+- Nur Admins dürfen Container bearbeiten
+- Activity Log nur lesbar, nicht löschbar
+1. **Daten-Validierung:**
+- QR-Codes müssen gültiges Format haben
+- Mengen können nicht negativ sein
+- Status-Übergänge validieren (z.B. nicht direkt von “offen” zu “erledigt”)
+1. **Backup:**
+- Tägliche Firestore-Backups
+- Activity Log als unveränderliches Audit-Trail
+
+-----
+
+## Testing-Checkliste
+
+- [ ] Login/Logout funktioniert
+- [ ] Rollen-basierte Navigation korrekt
+- [ ] QR-Scanner erkennt Codes zuverlässig
+- [ ] Zeitstempel werden korrekt gespeichert
+- [ ] Füllstands-Berechnung stimmt
+- [ ] Push-Notifications kommen an
+- [ ] Aufgaben-Zuweisung durch Admin funktioniert
+- [ ] Container-Bearbeitung durch Admin funktioniert
+- [ ] Filter in Aufgabenliste arbeiten korrekt
+- [ ] App funktioniert auf iOS UND Android
+- [ ] Performance bei 50+ Containern OK
+- [ ] Offline-Modus (falls implementiert)
+
+-----
+
+## Kontakt & Support
+
+Bei Fragen zur Implementierung:
+
+- Flutter-Docs: https://docs.flutter.dev
+- Firebase-Docs: https://firebase.google.com/docs
+- Stack Overflow für spezifische Probleme
+
+-----
+
+**WICHTIG:** Dieser Prompt ist als vollständige Spezifikation gedacht. Beginne mit Phase 1 und arbeite dich schrittweise durch. Teste jeden Schritt gründlich, bevor du zum nächsten gehst!

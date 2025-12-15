@@ -1,0 +1,144 @@
+UI/UX POLISH PASS – CONTAINERFLOW (Expo React Native)
+====================================================
+
+CONTEXT
+=======
+We recently introduced “Verfügbare Dinge” (availability-related UI) in the Tasks tab and other screens. The app works, but the layout is not professional yet:
+- texts wrap awkwardly (e.g., “Verfügbar …” appears on two lines)
+- spacing and sizing are inconsistent
+- some elements overlap or look cramped depending on device size
+- dark mode / light mode needs to be consistent and readable
+
+GOAL
+====
+Do a full UI/UX polish pass across the mobile app so it looks professional and consistent on ALL common screen sizes (small Android phones → large iPhones), in BOTH light & dark mode.
+
+IMPORTANT
+=========
+- Keep all existing functionality and logic. This task is UI-only.
+- Do NOT change business logic, API, DB, or state management.
+- Improve layout, spacing, typography, components, responsiveness, and theming.
+
+------------------------------------------------------------
+1) DESIGN SYSTEM & THEME (single source of truth)
+------------------------------------------------------------
+1. Identify where the design system is defined (e.g. `client/constants/theme.ts` or similar).
+2. Ensure we have consistent tokens:
+   - spacing scale (4, 8, 12, 16, 24, 32)
+   - font sizes (12, 14, 16, 18, 22)
+   - border radius (8/12/16)
+   - consistent shadows/elevations (light & dark)
+   - consistent colors for:
+     - background / surface / card
+     - text primary / secondary
+     - primary action button
+     - destructive action
+     - success/info/warning
+3. Enforce accessibility:
+   - dark buttons must use light text
+   - no low-contrast text in dark mode
+   - use readable line heights and font weights
+
+------------------------------------------------------------
+2) RESPONSIVE LAYOUT RULES (prevent overlaps/wrapping issues)
+------------------------------------------------------------
+Apply the following rules everywhere:
+- Use Flexbox properly: `flexDirection`, `flexWrap`, `alignItems`, `justifyContent`
+- Avoid fixed widths unless necessary
+- Use `numberOfLines={1}` + `ellipsizeMode="tail"` for single-line labels
+- Use `minWidth: 0` on text containers inside rows to allow truncation
+- Use `flexShrink: 1` for long text in rows
+- Use `gap` where supported, or spacing components otherwise
+- Add safe padding (at least 16) on main screens
+- Ensure list rows/cards never overflow horizontally
+
+Specific bug to fix:
+- In Tasks tab, “Verfügbare Dinge” must NEVER break into two ugly lines.
+  If needed:
+  - shorten label in UI (“Verfügbar”)
+  - use a badge/pill component
+  - enforce one-line + ellipsis
+  - or move it under the title as secondary text with proper spacing
+
+------------------------------------------------------------
+3) STANDARD COMPONENTS (make UI consistent)
+------------------------------------------------------------
+Create/standardize reusable components:
+- `Screen` wrapper with SafeArea + standard padding + background
+- `Card` component with consistent padding/radius
+- `Button` variants: primary / secondary / outline / destructive
+- `Badge` / `Pill` for status labels (OFFEN, IN BEARBEITUNG, ABGESCHLOSSEN, VERFÜGBAR etc.)
+- `ListItem` for tasks & containers (consistent alignment)
+- `EmptyState` component (no tasks, no containers)
+- `LoadingState` component
+
+Use these components across all screens instead of ad-hoc styles.
+
+------------------------------------------------------------
+4) TASK LIST + TASK CARD PROFESSIONAL REDESIGN
+------------------------------------------------------------
+Tasks tab is the most important. Redesign it cleanly:
+
+Task Card layout (example structure):
+- Row 1: Title (left, bold, 1 line) + Status Badge (right)
+- Row 2: Customer / Location (secondary text, 1 line)
+- Row 3: Container label + quantity (secondary, 1 line)
+- Row 4: Optional “Verfügbar …” as a small badge or sub-row that never wraps awkwardly
+- Row 5: Action button(s) aligned consistently (e.g., “Details”, “Annehmen”)
+
+Requirements:
+- No overlapping
+- Consistent spacing
+- Works on narrow screens
+- Always readable in dark mode
+- Status and availability should be visually clear but not cluttered
+
+Also ensure Filters/Segmentation (OFFEN/IN BEARBEITUNG/ABGESCHLOSSEN):
+- buttons/tabs have consistent width and don’t wrap
+- if needed use horizontal scroll or compact segmented control
+
+------------------------------------------------------------
+5) GLOBAL QUALITY CHECKS
+------------------------------------------------------------
+Do a UI audit on:
+- Admin area
+- Container screens
+- Task detail screen
+- Scan screen
+- Activity log
+
+Fix:
+- inconsistent padding/margins
+- misaligned icons/text
+- missing SafeArea spacing
+- long labels overflowing
+- buttons too small / too large
+- touch targets < 44px height (fix)
+- “light screen in dark mode” bug (ensure every screen respects dark theme)
+
+------------------------------------------------------------
+6) ANIMATIONS / FEEDBACK (lightweight, professional)
+------------------------------------------------------------
+Where appropriate:
+- Add subtle loading indicators for network actions
+- Add success/error toasts (non-blocking) instead of ugly alerts
+- Ensure existing confirmation dialogs look consistent
+- Smooth transitions if already using Reanimated; otherwise keep minimal
+
+------------------------------------------------------------
+7) ACCEPTANCE CRITERIA
+------------------------------------------------------------
+After your changes:
+- The UI looks professional and consistent
+- No overlap on common device sizes
+- “Verfügbar …” label is clean and not broken into ugly wrapping
+- Dark mode is fully dark and readable, no white/bright screens unless intended
+- Buttons have correct contrast and consistent sizing
+- Tasks tab looks polished and usable
+
+DELIVERABLES
+============
+- Updated theme tokens
+- Updated reusable UI components
+- Refactored key screens to use those components
+- Quick notes in README or comments describing the design system usage

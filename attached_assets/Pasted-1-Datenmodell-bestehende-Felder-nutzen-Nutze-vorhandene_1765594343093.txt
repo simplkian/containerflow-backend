@@ -1,0 +1,165 @@
+1) Datenmodell (bestehende Felder nutzen)
+
+Nutze vorhandene JSON-Felder:
+
+halls.location_meta
+
+Speichere:
+
+mapImageKey: string (z. B. "K30.png")
+
+mapMarker: { x: number, y: number } // Position der Halle auf OUT-Übersicht
+
+optional: mapScale, mapOffset (falls Zoom/Pan benötigt)
+
+stations.location_meta
+
+Speichere:
+
+{ x: number, y: number } // Position der Station auf Hallenplan
+
+optional: labelOffset etc.
+
+Koordinaten sind normalisiert 0..1 relativ zur aktuell angezeigten Bildfläche.
+
+2) Navigationsstruktur (zwingend)
+
+OUT-Ansicht zeigt Außen-Übersicht (OUT.png): Marker = Hallenpositionen (halls.location_meta.mapMarker)
+
+Klick auf eine Halle öffnet Hallenansicht (z. B. K30.png)
+
+Hallenansicht zeigt Marker = Stationen dieser Halle (stations.location_meta)
+
+Außenbereich:
+
+OUT ist eine eigene „Halle“ (halls.code='OUT') mit eigener Map.
+
+Es gibt:
+
+Außenbereich-Hallenansicht (OUT.png)
+
+Außenbereich-Stationansicht (Stationen die hall_id='OUT')
+
+3) Admin Map Editor (Pflicht)
+
+Neuer Admin-Screen: „Map bearbeiten“
+
+3.1 Modus A: Hallenmarker auf OUT setzen
+
+UI:
+
+Dropdown „Modus“: [Hallenmarker setzen | Stationsmarker setzen]
+
+Wenn Hallenmarker:
+
+Zeige OUT.png
+
+Liste/Dropdown Hallen (ohne OUT optional)
+
+Admin wählt eine Halle (z. B. K30)
+
+Admin klickt auf die Karte
+
+App setzt Marker und speichert sofort in DB:
+
+halls.location_meta.mapMarker = {x,y}
+
+Marker kann per Drag verschoben werden (optional; sonst Klick setzt neu)
+
+API:
+
+PATCH /admin/halls/:id/map-marker
+body: { x: number, y: number }
+Server:
+
+validiere 0..1
+
+update halls.location_meta (merge JSON)
+
+audit activity_logs action='MAP_HALL_MARKER_SET' before/after
+
+3.2 Modus B: Stationsmarker auf Hallenplan setzen
+
+UI:
+
+Admin wählt Halle (z. B. K30)
+
+Zeige K30.png
+
+Dropdown Station (nur Stationen dieser Halle)
+
+Admin klickt auf Karte → station.position setzen:
+
+stations.location_meta = {x,y}
+
+Marker per Drag verschiebbar (optional)
+
+Zusätzlich: Button „Station zuordnen“ (wenn Station nicht in dieser Halle ist)
+
+Stationen dürfen nicht hallenübergreifend doppelt sein; verschieben muss validieren.
+
+API:
+
+PATCH /admin/stations/:id/position
+body: { x: number, y: number }
+Server:
+
+validiere 0..1
+
+update stations.location_meta
+
+audit activity_logs action='MAP_STATION_MARKER_SET'
+
+4) Visuelles Verhalten (UX)
+
+Karte muss zoombar/pannbar sein (RN Gesture Handler), damit Admin genau klicken kann.
+
+Beim Klick wird ein „Crosshair“ angezeigt und die Koordinaten gespeichert.
+
+Undo/Reset:
+
+Button „Marker entfernen“ setzt location_meta.x/y auf NULL
+
+Marker-Liste:
+
+Zeige Stationen/Hallen ohne Marker in einer „Fehlt“ Liste.
+
+5) Verknüpfung bleibt strikt: Halle → Station
+
+Admin kann im Map Editor Station nur innerhalb der aktuell ausgewählten Halle positionieren.
+
+Falls Station in anderer Halle hängt: im Editor nur via explizitem „Station verschieben“ Workflow:
+
+PATCH /admin/stations/:id/move { hallId }
+
+DB validiert UNIQUE (hall_id, code)
+
+6) Map Screens (User) aktualisieren
+
+User-Map nutzt stets die gespeicherten Marker.
+
+Wenn Marker fehlen: zeige Station in Liste, aber ohne Marker.
+
+Endpoints (performant):
+
+GET /map/overview -> OUT + Hallenmarker
+
+GET /map/halls/:hallId -> Hallenmap + Stationsmarker
+
+7) Audit / Activity
+
+Jeder Marker-Change schreibt activity_logs:
+
+type='MAP'
+
+action='MAP_HALL_MARKER_SET' / 'MAP_STATION_MARKER_SET'
+
+metadata: { entityId, x, y, mapKey, userId }
+
+Output
+
+Admin UI: Map Editor mit beiden Modi
+
+Backend: PATCH Endpoints + Audit
+
+README_MAP_EDITOR.md (Bedienung, Koordinatensystem 0..1)

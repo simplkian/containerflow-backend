@@ -1,0 +1,63 @@
+WICHTIGES ANFORDERUNGSUPDATE ZUR QR-CODE-LOGIK:
+
+Die APP (keine Website) verwaltet Container, die jeweils einen QR-Code haben. Diese QR-Codes werden einmal ausgedruckt und physisch an den Container geklebt. DARUM GILT:
+
+1. QR-CODE MUSS STABIL UND DAUERHAFT SEIN
+- Jeder Container hat ein Feld wie `qrCodeValue` (oder vergleichbar) in der Datenbank.
+- Dieser Wert wird NUR EINMAL beim Anlegen des Containers generiert.
+- Nach dem Anlegen darf sich `qrCodeValue` NIEMALS automatisch ändern:
+  - nicht bei App-Neustart
+  - nicht beim erneuten Deploy
+  - nicht beim Refresh/Reload der UI
+  - nicht bei irgendeinem „random“-Aufruf im Frontend
+- `qrCodeValue` darf ausschließlich über eine explizite, gewollte Aktion geändert werden (z. B. Admin klickt bewusst auf „QR-Code neu generieren“ und bestätigt).
+
+2. KEINE ZUFALLSGENERIERUNG IM FRONTEND
+- Der QR-Code-Wert darf NICHT im Frontend dynamisch mit `Math.random()`, UUID-Generatoren o.ä. erzeugt werden, wenn ein Container angezeigt oder die App neu geladen wird.
+- Der QR-Code-Wert kommt IMMER aus dem Backend / der Datenbank:
+  - API liefert Container inklusive festen `qrCodeValue`.
+  - Frontend zeigt nur an, was aus dem Backend kommt (z. B. als QR-Bild, aber der zugrundeliegende String bleibt unverändert).
+
+3. BACKEND-PERSISTENZ SICHERSTELLEN
+- Stelle sicher, dass das `qrCodeValue`-Feld:
+  - in der Datenbank dauerhaft gespeichert ist (z. B. in der `Container`-Tabelle/Collection),
+  - beim Laden eines Containers immer mitgeladen wird,
+  - NICHT bei Migrationen/Seeds/Resets ungewollt neu generiert wird.
+- Wenn es aktuell Logik gibt, die beim Start oder beim „Sync“ alle QR-Codes neu generiert:
+  - Diese Logik ENTFERNEN oder so anpassen, dass bestehende `qrCodeValue`-Felder niemals überschrieben werden.
+
+4. OPTIONAL: MANUELLE NEUGENERIERUNG (ADMIN)
+- Wenn du eine Funktion „QR-Code neu generieren“ einbaust, dann:
+  - Nur für Admins verfügbar.
+  - Mit einer deutlichen Warnung + Bestätigung („Achtung: Beim Neugenerieren wird der alte QR-Code ungültig, bitte neuen Code ausdrucken und am Container anbringen.“).
+  - Erst nach Bestätigung:
+    - Neues `qrCodeValue` im Backend generieren.
+    - In der DB speichern und zurückgeben.
+  - Diese Aktion im ActivityLog protokollieren (z. B. „Admin X hat QR-Code für Container Y neu generiert.“).
+
+5. VERHALTEN BEI NEUSTART / DEPLOY / REFRESH
+- Testfall, der unbedingt funktionieren muss:
+  - Container anlegen -> QR-Code-Wert generieren -> QR-Code ausgeben/anzeigen.
+  - App/Server neu starten, Seite neu laden, Browser schließen/öffnen etc.
+  - Container erneut laden:
+    - Es muss GENAU der gleiche `qrCodeValue` zurückkommen wie zuvor.
+- Implementiere dazu:
+  - Keine temporären In-Memory-Generierungen, die nicht in der DB landen.
+  - Keine zufälligen Defaultwerte auf API-/DTO-Ebene, wenn das DB-Feld eigentlich existiert.
+
+6. SCAN-LOGIK AN STABILE QR-CODES BINDEN
+- Alle Scan-Endpunkte (z. B. `POST /api/scan`) müssen ausschließlich über das stabile `qrCodeValue` arbeiten:
+  - `qrCodeValue` -> Container eindeutig aus der DB suchen.
+  - Es darf niemals passieren, dass ein neu berechneter QR-Wert entsteht, der nicht zum aufgeklebten Code passt.
+- Wenn aktuell beim Scannen Probleme auftreten, weil der QR-Code z. B. nach Neustart nicht mehr zu einem Container passt:
+  - Ursache finden (falsche Generierung / fehlende Persistenz) und fixen.
+  - Ziel: Ein einmal erstellter physischer QR-Code auf dem Container bleibt IMMER mit dem gleichen Containerdatensatz verknüpft.
+
+BITTE:
+- Überprüfe den aktuellen Code (Backend + Frontend) gezielt darauf, wo und wie `qrCodeValue` erzeugt, überschrieben oder NICHT gespeichert wird.
+- Refactore die QR-Code-Logik so, dass:
+  - `qrCodeValue` ein stabiles, persistentes Feld ist,
+  - nicht zufällig geändert wird,
+  - und nur mit expliziter Admin-Aktion neu generiert werden kann.
+- Danach: Einmaligen Test-Workflow implementieren:
+  - Container anlegen, QR-Code erzeugen, App neu starten, Container laden, scannen – der Code muss immer identisch und gültig bleiben.

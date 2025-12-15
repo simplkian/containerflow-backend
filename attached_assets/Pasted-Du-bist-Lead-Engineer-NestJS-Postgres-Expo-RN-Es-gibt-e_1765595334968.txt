@@ -1,0 +1,80 @@
+Du bist Lead Engineer (NestJS + Postgres + Expo RN). Es gibt einen Bug: dieselbe Box (z. B. Box-002) wird in der Mapping-UI bei mehreren Stellplätzen angezeigt. Das ist physisch und logisch unmöglich. Fixe Backend und Frontend so, dass Boxen ausschließlich über boxes.stand_id zu Stellplätzen verknüpft sind, niemals über Station/Halle oder Material.
+
+A) Fachregeln (zwingend)
+
+Eine Box existiert global nur einmal (serial UNIQUE, qr_code UNIQUE).
+
+Eine Box kann zu einem Zeitpunkt nur an genau einem Stellplatz stehen:
+
+boxes.stand_id = <standId> oder NULL.
+
+Station/Halle sind abgeleitet:
+
+box -> stand -> station -> hall.
+
+Mapping-UI darf Boxen niemals „station-basiert“ anzeigen oder cachen.
+
+B) Backend Fix: Datenabruf (zwingend)
+
+In „Stellplatz verwalten / verknüpfen“ muss die Boxliste für einen Stand exakt sein:
+
+GET /admin/stands/:standId/boxes
+
+Query: SELECT * FROM boxes WHERE stand_id = :standId AND is_active=true
+
+Keine Joins, die Boxen über station_id/material_id „mitschleppen“.
+
+Stelle sicher, dass in allen Admin-Listen die Box-Zuordnung immer über stand_id erfolgt.
+
+C) Backend Fix: Assign/Unassign (harte Integrität)
+
+Implementiere:
+
+POST /admin/stands/:standId/assign-box { boxId | boxSerial | boxQr }
+Servervalidierung:
+
+Lade box
+
+Wenn box.stand_id IS NOT NULL AND box.stand_id != standId:
+
+return 409 Conflict: "Box ist bereits an einem anderen Stellplatz platziert"
+
+Sonst: set box.stand_id=standId, status='AT_STAND', last_seen_at=now()
+
+Audit activity_logs action='BOX_PLACED' meta: {boxId, fromStandId, toStandId}
+
+POST /admin/stands/:standId/unassign-box { boxId }
+
+set box.stand_id=NULL, status='IN_TRANSIT' (oder 'UNASSIGNED'), last_seen_at=now()
+
+Audit action='BOX_UNPLACED'
+
+D) Frontend Fix: State & Rendering
+
+Der Stand-Detail-Screen darf Boxen nicht aus einem globalen Cache wiederverwenden.
+
+Beim Wechsel Stand A -> Stand B:
+
+muss ein neuer Request /admin/stands/:id/boxes ausgeführt werden
+
+lokale state leeren bevor neue Daten gerendert werden
+
+Stelle sicher, dass Listen Keys korrekt sind (keyExtractor = box.id), keine index keys.
+
+E) Zusätzliche Sicherheit: Diagnose-UI
+
+In Stand-Detail:
+
+Zeige bei jeder Box auch box.stand_id (debug mode) und Stand identifier
+
+Admin kann sofort sehen, ob Daten falsch sind.
+
+F) Done Criteria
+
+Box-002 kann nie gleichzeitig bei zwei Ständen angezeigt werden.
+
+Ein Assign-Versuch einer bereits platzierten Box führt zu 409.
+
+Alle Box-Stand-Zuordnungen sind ausschließlich über boxes.stand_id.
+
+Output: Vollständiger Code Backend+UI+Audit, keine Pseudocode.

@@ -1,0 +1,208 @@
+Du bist Lead Engineer (NestJS + Postgres + Expo React Native). Implementiere die folgenden zwei Features vollständig (DB/API/UI). Kein Pseudocode.
+
+Aufgabe 1 — QR-Center für alle User (Admin & Fahrer) mit Admin-Only Regenerate
+Ziel
+
+Jeder Nutzer (Admin und Fahrer) soll QR-Codes anzeigen, downloaden und drucken/teilen können.
+Nur Admin darf neu generieren (mit Warn-Dialog).
+
+UI/Navigation (zwingend)
+
+Füge im Profil/Account Bereich (für alle Rollen sichtbar) einen Punkt hinzu: „QR-Center“
+
+Zusätzlich: Im Admin-Bereich darf derselbe Screen ebenfalls erreichbar sein (aber nicht doppelt implementieren – reuse).
+
+QR-Center Flow
+
+Entity-Typ wählen:
+
+Halle
+
+Station
+
+Stellplatz (Stand)
+
+Box
+
+Lagercontainer (Warehouse Container)
+
+Suche/Filter:
+
+Hall/Station: nach code/name
+
+Stand: nach identifier, Materialname
+
+Box: nach serial
+
+Warehouse: nach material_type, Zone, Location
+
+Detailansicht:
+
+QR-Code als Grafik anzeigen
+
+Klarer Titel + Metadaten (z. B. Stand identifier, Station, Halle, Material)
+
+Buttons für alle Rollen:
+
+„Als Bild speichern“ (PNG Export)
+
+„Teilen“ (Share Sheet)
+
+„Drucken“ (wenn Print unterstützt, sonst „Teilen“ als Ersatz)
+
+Admin-only Button:
+
+„Neu generieren“
+
+Warn-Dialog: „Alter QR funktioniert dann nicht mehr. Fortfahren?“
+
+Nach Bestätigung: Regenerate via API + Audit + Anzeige aktualisieren
+
+Backend/API (zwingend)
+
+Implementiere:
+
+GET /qr/entities?type=HALL|STATION|STAND|BOX|WAREHOUSE_CONTAINER&query=...
+
+returns list: { id, displayName, qr_code, extraMeta }
+
+POST /qr/ensure { type, id }
+
+setzt qr_code, falls leer, ansonsten no-op; returns qr_code
+
+POST /qr/regenerate { type, id }
+
+Admin-only
+
+erzeugt neuen eindeutigen QR-Text (z. B. Version/Suffix)
+
+schreibt Audit (activity_logs)
+
+QR-Format (zwingend)
+
+QR content ist JSON-Text:
+
+{"t":"HALL","id":"<uuid>"}
+
+{"t":"STATION","id":"<uuid>"}
+
+{"t":"STAND","id":"<uuid>"}
+
+{"t":"BOX","id":"<uuid>"}
+
+{"t":"WAREHOUSE_CONTAINER","id":"<uuid>"}
+Regenerate darf zusätzlich v ergänzen:
+
+{"t":"STAND","id":"<uuid>","v":"<rand>"}
+Der Parser nutzt nur t+id.
+
+Sicherheit / Rollen
+
+Jeder darf: GET /qr/* und ensure (optional, aber ok)
+
+Nur Admin darf: regenerate
+
+Audit:
+
+activity_logs: type='QR', action='ENSURE'|'REGENERATE', user_id, metadata {type,id,oldQr,newQr}
+
+Mobile Implementierung (zwingend)
+
+QR Rendering: react-native-qrcode-svg o.ä.
+
+Export PNG:
+
+QR in 512x512 oder größer
+
+Share/Print:
+
+ShareSheet verwenden; Print optional, sonst „Teilen“ reicht.
+
+Aufgabe 2 — Map UI/HUD/Layout Overhaul (keine Überlappungen, sauber responsive)
+Ziel
+
+Die Karte und ihre Station/Marker/Drawer Darstellung soll professionell wirken:
+
+keine überlappenden Marker/Labels
+
+Badges/Counts sauber positioniert
+
+Drawer/BottomSheet darf nichts verdecken
+
+überall korrekte SafeArea Insets
+
+konsistente Farblogik (Materialfarben oder Statusfarben)
+
+klare Hierarchie: OUT → Halle → Station → Stand → Tasks
+
+Muss-Kriterien (zwingend)
+
+Marker Layout
+
+Marker haben zwei Layer:
+
+Pin/Point
+
+Badge Count (open tasks)
+
+Badge muss immer lesbar sein (Kontrast) und darf Marker nicht verdecken
+
+Bei dichten Bereichen:
+
+Cluster oder „spread“ beim Zoom (mindestens: Marker-Layer sortiert + collision-avoid bei Labels)
+
+Labels optional ein/aus toggle
+
+Station Drawer / Stand Modal
+
+Nutze BottomSheet (snap points) mit sauberer Höhe:
+
+25% / 50% / 85%
+
+Liste der Tasks muss scrollen, nicht den Screen sprengen
+
+Kein abgeschnittener Content bei kleinen Displays
+
+Kartenbild Skalierung & Koordinaten
+
+Koordinaten (0..1) müssen auf den tatsächlich gerenderten Bildbereich gemappt werden (contain offsets berücksichtigen).
+
+Beim Zoom/Pan müssen Marker korrekt „mitgehen“.
+
+Styling
+
+Einheitliche Spacing Tokens (8/12/16)
+
+Typografie: klare Hierarchie (Titel/Untertitel/Meta)
+
+Farbpalette:
+
+Materialfarben (aus materials oder fallback mapping)
+
+Statusfarben (OPEN/IN_TRANSIT/DROPPED_OFF/…)
+
+Dark/Light Mode stabil (falls vorhanden)
+
+Performance
+
+Marker Rendering effizient (FlatList/Virtualization oder Canvas/SVG, keine Re-Renders bei jedem State Tick)
+
+API Aggregation für openTaskCounts statt clientseitiger Voll-Queries
+
+Output
+
+Refactor Map Screen + Marker Components + Drawer Components
+
+Visual Regression Fixes: keine Overlaps, saubere SafeArea
+
+README_MAP_UI.md (Design-Regeln, Marker/Badge Logik)
+
+Abnahmekriterien
+
+Jeder User kann im Profil QR-Codes aufrufen, anzeigen, teilen, speichern, drucken.
+
+Admin hat zusätzlich „Neu generieren“ mit Warn-Dialog + Audit.
+
+Map ist visuell sauber: keine Überlappungen, HUD konsistent, Drawer nutzbar.
+
+Koordinaten stimmen nach Skalierung/Zoom/Pan.
