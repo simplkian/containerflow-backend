@@ -2,11 +2,19 @@
   "name": "containerflow",
   "version": "1.0.0",
   "private": true,
-  "main": "client/index.js",
-  "type": "module",
-  "engines": {
-    "node": ">=18"
+  "description": "",
+  "homepage": "https://github.com/simplkian27/containerflow-backend#readme",
+  "bugs": {
+    "url": "https://github.com/simplkian27/containerflow-backend/issues"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simplkian27/containerflow-backend.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "client/index.js",
   "scripts": {
     "server:dev": "PORT=${PORT:-5000} NODE_ENV=development tsx server/index.ts",
     "server:build": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=server_dist",
@@ -49,6 +57,7 @@
     "express": "^4.21.2",
     "http-proxy-middleware": "^3.0.5",
     "ngrok": "^5.0.0-beta.2",
+    "nx": "^22.2.4",
     "pg": "^8.16.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -75,7 +84,7 @@
     "@types/react": "~19.1.0",
     "babel-plugin-module-resolver": "^5.0.2",
     "concurrently": "^9.1.2",
-    "drizzle-kit": "^0.31.8",
+    "drizzle-kit": "^0.18.1",
     "esbuild": "^0.25.12",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
@@ -84,5 +93,8 @@
     "eslint-plugin-prettier": "^5.5.4",
     "prettier": "3.6.2",
     "typescript": "~5.9.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
